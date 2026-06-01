@@ -320,6 +320,7 @@ function matchCard(m){
       ${top?`<span class="chip"><b>${top}</b></span>`:""}
       ${sc?`<span class="chip clk" data-player="${esc(sc.name)}" data-pteam="${esc(sc.team)}">${L().scorer} <b>${sc.name}</b> ${pct(sc.p_score)}</span>`:""}
       ${(m.context||[]).map(c=>`<span class="chip" style="border-color:var(--gold);color:var(--gold)">⛰ ${ctxNote(c)}</span>`).join("")}
+      ${m.market_1x2?`<span class="chip" style="border-color:var(--acc);color:var(--acc)">${LANG==='zh'?'市场':'mkt'} ${(m.market_1x2[0]*100).toFixed(0)}/${(m.market_1x2[1]*100).toFixed(0)}/${(m.market_1x2[2]*100).toFixed(0)}</span>`:""}
     </div></div>`;
 }
 function highlights(d){

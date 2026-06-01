@@ -6,6 +6,7 @@ are reproducible and we never hammer an API.
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime
 from typing import Any
 
@@ -263,6 +264,125 @@ def fetch_club_elo(force: bool = False) -> dict[str, float]:
             continue
     CLUB_ELO_JSON.write_text(_json.dumps(elo, ensure_ascii=False))
     return elo
+
+
+def _fd_headers() -> dict:
+    return {"X-Auth-Token": os.environ.get("FOOTBALL_DATA_API_KEY", ""), **UA}
+
+
+def fetch_fd_matches() -> list[dict[str, Any]]:
+    """football-data.org WC matches: id, kickoff, status, venue, score, lineups, referees.
+    Free tier; lineups/referees populate on match day. Returns [] on any error/no key."""
+    if not os.environ.get("FOOTBALL_DATA_API_KEY"):
+        return []
+    try:
+        r = requests.get(f"{paths.FOOTBALL_DATA_BASE}/competitions/WC/matches",
+                         headers=_fd_headers(), timeout=30)
+        r.raise_for_status()
+        return r.json().get("matches", [])
+    except requests.RequestException:
+        return []
+
+
+def fetch_fd_match(match_id: int) -> dict[str, Any]:
+    """Single match detail — includes lineup + referees once published (match day)."""
+    try:
+        r = requests.get(f"{paths.FOOTBALL_DATA_BASE}/matches/{match_id}",
+                         headers=_fd_headers(), timeout=30)
+        r.raise_for_status()
+        return r.json()
+    except requests.RequestException:
+        return {}
+
+
+def fd_lineup_absences(match_id: int, squads_team: list[dict]) -> list[str]:
+    """Players in the squad NOT in today's confirmed XI (i.e. benched/out) — used to
+    down-weight absent key scorers during the tournament. Empty until lineups publish."""
+    m = fetch_fd_match(match_id)
+    info = m.get("match", m)
+    xi = set()
+    for side in ("homeTeam", "awayTeam"):
+        for p in (info.get(side, {}).get("lineup") or []):
+            xi.add(_n(p.get("name", "")))
+    if not xi:
+        return []
+    return sorted({p["name"] for p in squads_team if _n(p["name"]) not in xi})
+
+
+def _n(s: str) -> str:
+    import re
+    import unicodedata
+    s = unicodedata.normalize("NFD", str(s)).encode("ascii", "ignore").decode()
+    return re.sub(r"[^a-z0-9]", "", s.lower())
+
+
+def fetch_match_markets() -> dict[tuple, list[float]]:
+    """Per-match 1X2 market consensus (de-vigged) keyed by (home, away).
+
+    Combines Polymarket + Kalshi when per-match markets exist. These open close to
+    kickoff, so this returns {} pre-tournament — wired so the ensemble activates
+    automatically once books/markets list the matches. Defensive: never raises.
+    """
+    out: dict[tuple, list[float]] = {}
+    # Polymarket: look for 90-minute result markets with H/D/A outcomes
+    try:
+        r = requests.get(f"{paths.POLYMARKET_GAMMA}/public-search",
+                         params={"q": "FIFA World Cup 2026 result"}, headers=UA, timeout=20)
+        for ev in r.json().get("events", []):
+            title = ev.get("title", "")
+            mk = ev.get("markets", [])
+            # best-effort: a 3-outcome market (home/draw/away). Format TBD until live.
+            for m in mk:
+                import json as _json
+                try:
+                    outs = _json.loads(m.get("outcomes", "[]"))
+                    prices = [float(x) for x in _json.loads(m.get("outcomePrices", "[]"))]
+                except (ValueError, TypeError):
+                    continue
+                if len(outs) == 3 and len(prices) == 3 and " vs" in title.lower():
+                    teams = title.split(":")[-1].split(" vs")
+                    if len(teams) >= 2:
+                        s = sum(prices) or 1
+                        out[(teams[0].strip(), teams[1].split("–")[0].strip())] = [p / s for p in prices]
+    except (requests.RequestException, ValueError):
+        pass
+    return out
+
+
+KALSHI_BASE = "https://api.elections.kalshi.com/trade-api/v2"
+
+
+def fetch_kalshi_title(team_filter: set[str] | None = None) -> dict[str, float]:
+    """Kalshi 'World Cup winner' market → {team: de-vigged prob}. A second market
+    signal to blend with Polymarket. Returns {} if Kalshi hasn't listed WC yet."""
+    import re
+
+    try:
+        evs = requests.get(f"{KALSHI_BASE}/events", params={"limit": 200, "status": "open"},
+                           headers=UA, timeout=25).json().get("events", [])
+    except (requests.RequestException, ValueError):
+        return {}
+    wc = [e for e in evs if "world cup" in (e.get("title", "")).lower()
+          and "winner" in (e.get("title", "")).lower()]
+    raw = {}
+    for e in wc:
+        try:
+            mk = requests.get(f"{KALSHI_BASE}/markets",
+                              params={"event_ticker": e.get("event_ticker"), "limit": 100},
+                              headers=UA, timeout=25).json().get("markets", [])
+        except (requests.RequestException, ValueError):
+            continue
+        for m in mk:
+            # yes_bid/yes_ask in cents → mid price as implied prob
+            yb, ya = m.get("yes_bid"), m.get("yes_ask")
+            sub = m.get("yes_sub_title") or m.get("subtitle") or ""
+            team = _canon(re.sub(r"\s*(to win|winner).*$", "", sub, flags=re.I).strip())
+            if yb is not None and ya is not None and team:
+                if team_filter and team not in team_filter:
+                    continue
+                raw[team] = (yb + ya) / 200.0
+    s = sum(raw.values())
+    return {t: round(p / s, 5) for t, p in raw.items()} if s else {}
 
 
 def cache_json(name: str, obj: Any) -> None:

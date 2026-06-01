@@ -18,6 +18,8 @@ from . import data_loader, paths
 
 # Weight of the squad-talent prior on attack/defence (log-space nudge). Modest by design.
 TALENT_WEIGHT = 0.10
+# Weight of the live market in the per-match ensemble (market is hard to beat → high).
+MARKET_WEIGHT = 0.60
 
 
 def _cmd_fetch(args):
@@ -56,20 +58,26 @@ def _cmd_predict(args):
     from ..model import context as ctxmod
     ctx = ctxmod.compute(fixtures)
 
+    # live per-match 1X2 market (Polymarket + Kalshi) — empty until books list matches,
+    # then the ensemble blends it automatically.
+    match_markets = data_loader.fetch_match_markets()
+    if match_markets:
+        print(f"[market] {len(match_markets)} live per-match markets found")
+
     if args.match:
         row = fixtures[fixtures["fixture_id"] == args.match]
         if row.empty:
             print(f"fixture {args.match} not found", file=sys.stderr)
             sys.exit(1)
         row = row.iloc[0]
-        out = _predict_one(model, row, squads, ctx.get(row["fixture_id"]))
+        out = _predict_one(model, row, squads, ctx.get(row["fixture_id"]), match_markets)
         print(json.dumps(out, indent=2, ensure_ascii=False))
         return
 
     preds = []
     for _, row in fixtures.iterrows():
         try:
-            preds.append(_predict_one(model, row, squads, ctx.get(row["fixture_id"])))
+            preds.append(_predict_one(model, row, squads, ctx.get(row["fixture_id"]), match_markets))
         except Exception as e:  # noqa: BLE001 — keep going on sparse teams
             preds.append({"fixture_id": row["fixture_id"], "error": str(e)})
     rep = paths.report_dir() / "predictions.json"
@@ -135,8 +143,11 @@ def _detail_payload(model, results, fixtures, squads, sim, talent=None):
     return tf, sq
 
 
-def _predict_one(model, row, squads=None, ctx=None) -> dict:
+def _predict_one(model, row, squads=None, ctx=None, match_markets=None) -> dict:
+    import numpy as np
+
     from ..model import dixon_coles as dc
+    from ..model import market as mkt
     from ..model.players import match_scorers
 
     home, away = row["home_team"], row["away_team"]
@@ -152,6 +163,14 @@ def _predict_one(model, row, squads=None, ctx=None) -> dict:
     mp["country"] = row.get("country")
     if ctx and ctx.get("notes"):
         mp["context"] = ctx["notes"]
+    # market-anchored ensemble: blend live 1X2 market into the model when available
+    if match_markets and (home, away) in match_markets:
+        p_mkt = np.array(match_markets[(home, away)], dtype=float)
+        p_model = np.array([mp["p_home"], mp["p_draw"], mp["p_away"]])
+        p_final = mkt.blend(p_mkt, p_model, w=MARKET_WEIGHT)
+        mp["p_home"], mp["p_draw"], mp["p_away"] = (round(float(x), 4) for x in p_final)
+        mp["market_1x2"] = [round(float(x), 4) for x in p_mkt]
+        mp["edge"] = [round(float(x), 4) for x in (p_final - p_mkt)]
     if squads:
         lam_h, lam_a = model.lambdas(home, away, neutral)
         mp["scorers_home"] = match_scorers(lam_h * hm, squads.get(home, []), topn=3)
@@ -367,7 +386,16 @@ def _cmd_publish(args):
         teams = set(model_title)
         mk = data_loader.fetch_polymarket_winner(team_filter=teams)
         if "implied_title_prob" in mk:
-            market = mk["implied_title_prob"]
+            market = dict(mk["implied_title_prob"])
+            # blend Kalshi as a second market (average where both quote), then renormalise
+            kal = data_loader.fetch_kalshi_title(team_filter=teams)
+            if kal:
+                merged = {t: (market.get(t, kal.get(t, 0)) + kal.get(t, market.get(t, 0))) / 2
+                          for t in set(market) | set(kal)}
+                s = sum(merged.values()) or 1
+                market = {t: round(v / s, 5) for t, v in merged.items()}
+                mk["sources"] = "polymarket+kalshi"
+                mk["implied_title_prob"] = dict(sorted(market.items(), key=lambda x: -x[1]))
             comparison = sorted(
                 ({"team": t, "model": round(model_title.get(t, 0), 4),
                   "market": round(market.get(t, 0), 4),
