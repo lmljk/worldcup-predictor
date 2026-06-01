@@ -110,6 +110,8 @@
   .dmatch .res{margin-left:auto;font-variant-numeric:tabular-nums;color:var(--mut);}
   .dmatch .res b{color:var(--txt);}
   .sect{font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--mut);margin:18px 0 6px;}
+  .clk{cursor:pointer;}
+  .clk:hover{text-decoration:underline;text-decoration-color:var(--acc2);text-underline-offset:2px;}
 </style>
 </head>
 <body>
@@ -235,6 +237,22 @@ function L(){ return I18N[LANG]; }
 function pct(x){ return (x*100).toFixed(1)+"%"; }
 function tName(en){ const m=TEAM[en]; return (LANG==="zh"&&m)?m[1]:en; }
 function flag(en){ const m=TEAM[en]; return m?`<img class="flag" loading="lazy" src="https://flagcdn.com/w40/${m[0]}.png" alt="">`:""; }
+function norm(s){ return (s||"").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").trim(); }
+function esc(s){ return (s||"").replace(/"/g,"&quot;"); }
+/* clickable cells (event-delegated to avoid quote/accent escaping issues) */
+function teamCell(t){ return `<span class="tcell clk" data-team="${esc(t)}">${flag(t)}${tName(t)}</span>`; }
+function playerCell(n,t){ return `<span class="tcell clk" data-player="${esc(n)}" data-pteam="${esc(t)}">${n}</span>`; }
+/* extra search aliases: Chinese names + nicknames -> matched by substring */
+const TEAM_ALIAS={ "United States":"usa america 美国队", "South Korea":"korea 韩国队", "Netherlands":"holland 荷兰队",
+  "England":"英格兰队", "Ivory Coast":"cote divoire", "DR Congo":"congo 刚果", "Czech Republic":"czechia 捷克队" };
+const PLAYER_ALIAS={ "Cristiano Ronaldo":"c罗 罗纳尔多 cr7", "Lionel Messi":"梅西 leo messi", "Kylian Mbappé":"姆巴佩 mbappe",
+  "Erling Haaland":"哈兰德", "Neymar":"内马尔", "Harry Kane":"凯恩", "Jude Bellingham":"贝林厄姆 贝林汉姆",
+  "Lautaro Martínez":"劳塔罗 马丁内斯", "Julián Álvarez":"阿尔瓦雷斯", "Lamine Yamal":"亚马尔",
+  "Bruno Fernandes":"b费 布鲁诺", "Mohamed Salah":"萨拉赫", "Son Heung-min":"孙兴慜 son",
+  "Luka Modrić":"莫德里奇", "Virgil van Dijk":"范戴克", "Memphis Depay":"德佩", "Romelu Lukaku":"卢卡库",
+  "Antoine Griezmann":"格列兹曼", "Ousmane Dembélé":"登贝莱", "Achraf Hakimi":"哈基米",
+  "Vinícius Júnior":"维尼修斯", "Federico Valverde":"巴尔韦德", "Darwin Núñez":"努涅斯",
+  "Christian Pulisic":"普利西奇", "Kevin De Bruyne":"德布劳内 kdb" };
 
 function setLang(l){ LANG=l; localStorage.setItem("wc_lang",l); render(); }
 
@@ -243,7 +261,7 @@ function probTable(el, obj, limit){
   const max=rows.length?rows[0][1]:1;
   el.innerHTML="<tr><th>#</th><th>"+L().team+"</th><th>"+L().prob+"</th><th></th></tr>"+
     rows.map(([t,p],i)=>`<tr><td><span class="rank">${i+1}</span></td>
-      <td><span class="tcell">${flag(t)}${tName(t)}</span></td>
+      <td>${teamCell(t)}</td>
       <td class="pct">${pct(p)}</td>
       <td style="width:42%"><div class="pbar"><i style="width:${(p/max*100).toFixed(0)}%"></i></div></td></tr>`).join("");
 }
@@ -252,7 +270,7 @@ function cmpTable(el, rows){
   el.innerHTML="<tr><th>"+L().team+"</th><th>"+L().model+"</th><th>"+L().market+"</th><th>"+L().edge+"</th></tr>"+
     rows.slice(0,18).map(r=>{
       const cls=r.edge>0.02?"up":(r.edge<-0.02?"down":"flat"), s=r.edge>0?"+":"";
-      return `<tr><td><span class="tcell">${flag(r.team)}${tName(r.team)}</span></td>
+      return `<tr><td>${teamCell(r.team)}</td>
         <td class="pct">${pct(r.model)}</td><td class="pct">${pct(r.market)}</td>
         <td class="pct ${cls}">${s}${(r.edge*100).toFixed(1)}%</td></tr>`;
     }).join("");
@@ -266,7 +284,7 @@ function bootTable(el, gb){
   el.innerHTML="<tr><th>#</th><th>"+L().player+"</th><th>"+L().topscorer+"</th><th>"+L().xg+"</th><th></th></tr>"+
     rows.map(([k,p],i)=>{const [name,team]=splitPlayer(k);
       return `<tr><td><span class="rank">${i+1}</span></td>
-        <td><span class="tcell">${team?flag(team):""}${name}</span></td>
+        <td><span class="tcell clk" ${team?`data-player="${esc(name)}" data-pteam="${esc(team)}"`:""}>${team?flag(team):""}${name}</span></td>
         <td class="pct">${pct(p)}</td><td class="pct">${(xg[k]||0).toFixed(2)}</td>
         <td style="width:34%"><div class="pbar"><i style="width:${(p/max*100).toFixed(0)}%"></i></div></td></tr>`;
     }).join("");
@@ -275,14 +293,15 @@ function matchCard(m){
   if(m.error) return "";
   const h=m.p_home*100,d=m.p_draw*100,a=m.p_away*100;
   const top=(m.top_scorelines||[]).slice(0,1).map(s=>`${s.score} (${(s.p*100).toFixed(0)}%)`).join("");
-  const sc=[...(m.scorers_home||[]),...(m.scorers_away||[])].sort((x,y)=>y.exp_goals-x.exp_goals)[0];
+  const scl=[...(m.scorers_home||[]).map(s=>({...s,team:m.home})),...(m.scorers_away||[]).map(s=>({...s,team:m.away}))].sort((x,y)=>y.exp_goals-x.exp_goals);
+  const sc=scl[0];
   const lab=v=>v>=11?v.toFixed(0):"";
   return `<div class="card">
     <div class="mtop"><span>${m.date||""}</span><span>${m.city||""}</span></div>
     <div class="vs">
-      <span class="side">${flag(m.home)}<span>${tName(m.home)}</span></span>
+      <span class="side clk" data-team="${esc(m.home)}">${flag(m.home)}<span>${tName(m.home)}</span></span>
       <span class="vsx">VS</span>
-      <span class="side away">${flag(m.away)}<span>${tName(m.away)}</span></span>
+      <span class="side away clk" data-team="${esc(m.away)}">${flag(m.away)}<span>${tName(m.away)}</span></span>
     </div>
     <div class="bar3">
       <span class="b-h" style="width:${h}%">${lab(h)}</span>
@@ -293,7 +312,7 @@ function matchCard(m){
       <span class="chip">${L().over} <b>${pct(m.p_over_2_5)}</b></span>
       <span class="chip">${L().btts} <b>${pct(m.p_btts)}</b></span>
       ${top?`<span class="chip"><b>${top}</b></span>`:""}
-      ${sc?`<span class="chip">${L().scorer} <b>${sc.name}</b> ${pct(sc.p_score)}</span>`:""}
+      ${sc?`<span class="chip clk" data-player="${esc(sc.name)}" data-pteam="${esc(sc.team)}">${L().scorer} <b>${sc.name}</b> ${pct(sc.p_score)}</span>`:""}
     </div></div>`;
 }
 function highlights(d){
@@ -350,14 +369,23 @@ function render(){
 let SIDX=[];
 function buildSearch(){
   SIDX=[];
-  Object.keys(DATA.team_factors||{}).forEach(t=>SIDX.push({type:"team",name:t,team:t}));
-  Object.entries(DATA.squads||{}).forEach(([t,ps])=>ps.forEach(p=>SIDX.push({type:"player",name:p.name,team:t,pos:p.pos})));
+  Object.keys(DATA.team_factors||{}).forEach(t=>{
+    const zh=(TEAM[t]||[])[1]||"";
+    SIDX.push({type:"team",name:t,team:t,hay:norm([t,zh,TEAM_ALIAS[t]||""].join(" "))});
+  });
+  Object.entries(DATA.squads||{}).forEach(([t,ps])=>ps.forEach(p=>{
+    SIDX.push({type:"player",name:p.name,team:t,pos:p.pos,
+      hay:norm([p.name,PLAYER_ALIAS[p.name]||"",t,(TEAM[t]||[])[1]||""].join(" "))});
+  }));
 }
 function onSearch(q){
-  const box=document.getElementById("results"); q=(q||"").trim().toLowerCase();
-  if(!q){ box.className="results"; return; }
-  const zh=LANG==="zh";
-  const hits=SIDX.filter(s=>s.name.toLowerCase().includes(q)||(zh&&s.type==="team"&&tName(s.name).includes(q))).slice(0,30);
+  const box=document.getElementById("results"); const nq=norm(q);
+  if(!nq){ box.className="results"; return; }
+  // every space-separated token must match somewhere (lightweight fuzzy)
+  const toks=nq.split(/\s+/);
+  const hits=SIDX.filter(s=>toks.every(tk=>s.hay.includes(tk)))
+    .sort((a,b)=>(a.type===b.type?0:a.type==="team"?-1:1))  // teams first
+    .slice(0,30);
   if(!hits.length){ box.className="results"; return; }
   box.innerHTML=hits.map((h,i)=>`<div class="ritem" onclick="pick(${i})">
     ${flag(h.team)}<span>${h.type==="player"?h.name+' · '+tName(h.team):tName(h.name)}</span>
@@ -419,11 +447,14 @@ function openPlayer(name,team){
   const sq=(DATA.squads[team]||[]); const p=sq.find(x=>x.name===name); if(!p){return;}
   const t=L(), gb=(DATA.simulation.golden_boot||{}); const key=`${name} (${team})`;
   const bootP=(gb.top_scorer_probability||{})[key], expG=(gb.expected_goals||{})[key];
-  const ms=teamMatches(team).map(m=>{const lp=m.lamTeam*p.share; const ps=1-Math.exp(-lp);
+  const zh=LANG==="zh";
+  const ms=teamMatches(team).map(m=>{const lp=m.lamTeam*p.share;
+    const ps=1-Math.exp(-lp), p2=1-Math.exp(-lp)*(1+lp);  // Poisson(λ): P(≥1), P(≥2)
     return `<div class="dmatch">${flag(m.opp)}<span>vs ${tName(m.opp)}</span>
       <span style="color:var(--mut);font-size:12px">${m.date}</span>
-      <span class="res"><b>${t.pscore} ${(ps*100).toFixed(1)}%</b> · xG ${lp.toFixed(2)}</span></div>`;}).join("");
-  const zh=LANG==="zh";
+      <span class="res"><b>${t.pscore} ${(ps*100).toFixed(1)}%</b> · ${zh?'梅开二度+':'2+'} ${(p2*100).toFixed(1)}% · xG ${lp.toFixed(2)}</span></div>`;}).join("");
+  const poissonNote=zh?`逐场进球数服从泊松分布 Poisson(λ),λ = 该队当场预期进球 × 该球员进球占比 ${(p.share*100).toFixed(0)}%`
+                      :`Per-match goals ~ Poisson(λ), λ = team's expected goals × this player's ${(p.share*100).toFixed(0)}% goal share`;
   const ev=zh?`${name}(${tName(team)},${p.pos})生涯 ${p.caps} 场 ${p.goals} 球,进球率 ${p.rate}。模型估其包揽全队约 ${(p.share*100).toFixed(0)}% 进球,金靴概率 ${bootP?(bootP*100).toFixed(1)+'%':'—'},全程预期 ${expG||'—'} 球。`
               :`${name} (${tName(team)}, ${p.pos}): ${p.goals} goals in ${p.caps} caps (rate ${p.rate}). Carries ~${(p.share*100).toFixed(0)}% of the team's goals; Golden Boot ${bootP?(bootP*100).toFixed(1)+'%':'—'}, ~${expG||'—'} goals expected.`;
   document.getElementById("sheet").innerHTML=`
@@ -442,7 +473,8 @@ function openPlayer(name,team){
       <li><b>${zh?'位置先验':'Position prior'}:</b> ${p.pos} — ${zh?'按位置的基础进球倾向':'baseline scoring tendency by position'}</li>
       <li><b>${zh?'球队进攻强度':'Team attacking strength'}:</b> ${zh?'决定每场可分配的总进球(ELO+Dixon-Coles)':'sets the goals available to share (ELO + Dixon-Coles)'}</li>
     </ul>
-    <div class="sect">${t.secMatches}</div>${ms}`;
+    <div class="sect">${t.secMatches}</div>
+    <div style="color:var(--mut);font-size:11.5px;margin-bottom:6px">${poissonNote}</div>${ms}`;
   showModal();
   wikiPortrait(name);
 }
@@ -456,6 +488,10 @@ function showModal(){document.getElementById("modal").className="modal on";docum
 function closeModal(){document.getElementById("modal").className="modal";document.body.style.overflow="";}
 document.addEventListener("keydown",e=>{if(e.key==="Escape")closeModal();});
 document.addEventListener("click",e=>{if(!e.target.closest(".searchbox"))document.getElementById("results").className="results";});
+document.addEventListener("click",e=>{
+  const tt=e.target.closest("[data-team]"); if(tt){ openTeam(tt.dataset.team); return; }
+  const pp=e.target.closest("[data-player]"); if(pp){ openPlayer(pp.dataset.player, pp.dataset.pteam); return; }
+});
 
 fetch("./data.json").then(r=>r.json()).then(d=>{DATA=d;buildSearch();render();}).catch(()=>render());
 render();
