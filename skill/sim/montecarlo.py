@@ -55,7 +55,8 @@ def _rank_desc(rng, *keys) -> np.ndarray:
     return order[:, ::-1]  # descending
 
 
-def run(model, fixtures: pd.DataFrame, n: int = 50000, seed: int = 0) -> dict:
+def run(model, fixtures: pd.DataFrame, n: int = 50000, seed: int = 0,
+        squads: dict | None = None, gb_topk: int = 12) -> dict:
     rng = np.random.default_rng(seed)
     groups = reconstruct_groups(fixtures)
     teams = sorted({t for g in groups for t in g})
@@ -118,6 +119,9 @@ def run(model, fixtures: pd.DataFrame, n: int = 50000, seed: int = 0) -> dict:
     advancers = np.concatenate([top2_ids, third_adv], axis=1)  # (n,32)
     np.add.at(reached["R32"], advancers.ravel(), 1)
 
+    # total goals each team scores across the tournament (group + every KO match played)
+    tour_goals = gf.copy()
+
     # knockout: random bracket per sim
     perm = rng.random(advancers.shape).argsort(axis=1)
     cur = np.take_along_axis(advancers, perm, axis=1)
@@ -130,12 +134,51 @@ def run(model, fixtures: pd.DataFrame, n: int = 50000, seed: int = 0) -> dict:
         mu = np.exp(inter + atk[away] - dfc[home])
         hg = rng.poisson(lam)
         ag = rng.poisson(mu)
+        ri = np.repeat(np.arange(n), home.shape[1])
+        np.add.at(tour_goals, (ri, home.ravel()), hg.ravel())
+        np.add.at(tour_goals, (ri, away.ravel()), ag.ravel())
         p_home = lam / (lam + mu)
         coin = rng.random(hg.shape) < p_home
         home_wins = (hg > ag) | ((hg == ag) & coin)
         winners = np.where(home_wins, home, away)  # (n, k/2)
         np.add.at(reached[stage], winners.ravel(), 1)
         cur = winners
+
+    # ---- Golden Boot: allocate each team's tournament goals to its players ----
+    golden_boot = {}
+    if squads:
+        from ..model.players import goal_shares
+
+        p_names, p_teams_idx, p_shares = [], [], []
+        for ti, tm in enumerate(teams):
+            sq = squads.get(tm)
+            if not sq:
+                continue
+            shares = sorted(goal_shares(sq), key=lambda x: -x[2])[:gb_topk]
+            for name, _pos, share in shares:
+                p_names.append(name)
+                p_teams_idx.append(ti)
+                p_shares.append(share)
+        if p_names:
+            P = len(p_names)
+            pg = np.zeros((n, P), dtype=np.int16)
+            for j in range(P):
+                lam = p_shares[j] * tour_goals[:, p_teams_idx[j]]
+                pg[:, j] = rng.poisson(lam).astype(np.int16)
+            winners = pg.argmax(axis=1)  # one Golden Boot winner per sim
+            win_counts = np.bincount(winners, minlength=P)
+            exp_goals = pg.mean(axis=0)
+            order = np.argsort(win_counts)[::-1][:25]
+            golden_boot = {
+                "top_scorer_probability": {
+                    f"{p_names[j]} ({teams[p_teams_idx[j]]})": round(float(win_counts[j]) / n, 4)
+                    for j in order
+                },
+                "expected_goals": {
+                    f"{p_names[j]} ({teams[p_teams_idx[j]]})": round(float(exp_goals[j]), 2)
+                    for j in np.argsort(exp_goals)[::-1][:25]
+                },
+            }
 
     def table(counter):
         return {teams[i]: round(float(counter[i]) / n, 4) for i in range(nt)}
@@ -152,4 +195,6 @@ def run(model, fixtures: pd.DataFrame, n: int = 50000, seed: int = 0) -> dict:
         "reach_quarterfinal": dict(sorted(table(reached["QF"]).items(), key=lambda x: -x[1])),
         "reach_final": dict(sorted(table(reached["final"]).items(), key=lambda x: -x[1])),
     }
+    if golden_boot:
+        out["golden_boot"] = golden_boot
     return out

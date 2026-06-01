@@ -28,3 +28,6 @@ CLAUDE.md
 
 # machine-specific real infra (only the .example belongs in the public repo)
 deploy/cloudflared-worldcup.yml
+
+# scraped squad data (regenerable via fetch_squads)
+data/squads_wc2026.json

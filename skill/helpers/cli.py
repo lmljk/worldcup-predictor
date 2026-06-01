@@ -29,6 +29,7 @@ def _cmd_predict(args):
     fixtures = data_loader.load_wc2026_fixtures()
     as_of = pd.Timestamp.now().normalize()
     model = dc.fit(results, as_of=as_of)
+    squads = data_loader.fetch_squads()
 
     if args.match:
         row = fixtures[fixtures["fixture_id"] == args.match]
@@ -36,14 +37,14 @@ def _cmd_predict(args):
             print(f"fixture {args.match} not found", file=sys.stderr)
             sys.exit(1)
         row = row.iloc[0]
-        out = _predict_one(model, row)
+        out = _predict_one(model, row, squads)
         print(json.dumps(out, indent=2, ensure_ascii=False))
         return
 
     preds = []
     for _, row in fixtures.iterrows():
         try:
-            preds.append(_predict_one(model, row))
+            preds.append(_predict_one(model, row, squads))
         except Exception as e:  # noqa: BLE001 — keep going on sparse teams
             preds.append({"fixture_id": row["fixture_id"], "error": str(e)})
     rep = paths.report_dir() / "predictions.json"
@@ -52,18 +53,24 @@ def _cmd_predict(args):
 
     if args.simulate:
         from ..sim import montecarlo
-        sim = montecarlo.run(model, fixtures, n=args.sims)
+        sim = montecarlo.run(model, fixtures, n=args.sims, squads=squads)
         (paths.report_dir() / "simulation.json").write_text(
             json.dumps(sim, indent=2, ensure_ascii=False)
         )
-        top = list(sim["title_probability"].items())[:8]
+        top = list(sim["title_probability"].items())[:6]
         print(f"wrote tournament simulation ({args.sims} runs). Top title odds:")
         for t, p in top:
-            print(f"  {t:<20} {p*100:5.1f}%")
+            print(f"  {t:<22} {p*100:5.1f}%")
+        gb = sim.get("golden_boot", {}).get("top_scorer_probability", {})
+        if gb:
+            print("Golden Boot (top scorer prob):")
+            for name, p in list(gb.items())[:6]:
+                print(f"  {name:<34} {p*100:5.1f}%")
 
 
-def _predict_one(model, row) -> dict:
+def _predict_one(model, row, squads=None) -> dict:
     from ..model import dixon_coles as dc
+    from ..model.players import match_scorers
 
     home, away = row["home_team"], row["away_team"]
     neutral = bool(row["neutral"])
@@ -74,8 +81,38 @@ def _predict_one(model, row) -> dict:
     mp["date"] = str(row["date"].date())
     mp["city"] = row.get("city")
     mp["country"] = row.get("country")
+    if squads:
+        lam_h, lam_a = model.lambdas(home, away, neutral)
+        mp["scorers_home"] = match_scorers(lam_h, squads.get(home, []), topn=3)
+        mp["scorers_away"] = match_scorers(lam_a, squads.get(away, []), topn=3)
     # NOTE: market blend + context adjustments wired once live odds feed exists (M3/M5).
     return mp
+
+
+def _cmd_players(args):
+    """Per-match likely scorers for a fixture (or refresh squads with --refresh)."""
+    from ..model import dixon_coles as dc
+
+    if args.refresh:
+        sq = data_loader.fetch_squads(force=True)
+        print(f"refreshed squads: {len(sq)} teams, {sum(len(v) for v in sq.values())} players")
+        return
+    results = data_loader.load_results()
+    fixtures = data_loader.load_wc2026_fixtures()
+    squads = data_loader.fetch_squads()
+    model = dc.fit(results, as_of=pd.Timestamp.now().normalize())
+    row = fixtures[fixtures["fixture_id"] == args.match]
+    if row.empty:
+        print(f"fixture {args.match} not found", file=sys.stderr)
+        sys.exit(1)
+    out = _predict_one(model, row.iloc[0], squads)
+    h, a = out["home"], out["away"]
+    print(f"{h} (λ={out['lambda_home']}) vs {a} (λ={out['lambda_away']})  [{out['date']}]\n")
+    for side, key in ((h, "scorers_home"), (a, "scorers_away")):
+        print(f"  {side} — likely scorers:")
+        for s in out.get(key, []):
+            print(f"    {s['name']:<24}{s['pos']}  P(score) {s['p_score']*100:4.1f}%  xG {s['exp_goals']}")
+        print()
 
 
 def _cmd_market(args):
@@ -228,6 +265,11 @@ def main(argv=None):
     pm = sub.add_parser("market")
     pm.add_argument("--date", default=None)
     pm.set_defaults(func=_cmd_market)
+
+    pl = sub.add_parser("players")
+    pl.add_argument("--match", default=None)
+    pl.add_argument("--refresh", action="store_true")
+    pl.set_defaults(func=_cmd_players)
 
     pb = sub.add_parser("backtest")
     pb.add_argument("--start", default="2010-01-01")

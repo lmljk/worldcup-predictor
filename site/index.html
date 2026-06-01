@@ -109,6 +109,9 @@
     <h2><span class="bar"></span><span id="t-cmp"></span> <span class="note" id="t-cmp-note"></span></h2>
     <table id="cmp"></table>
 
+    <h2><span class="bar"></span><span id="t-boot"></span> <span class="note" id="t-boot-note"></span></h2>
+    <table id="boot"></table>
+
     <h2><span class="bar"></span><span id="t-matches"></span> <span class="note" id="mcount"></span></h2>
     <div class="legend">
       <span><i class="dot b-h"></i><span id="t-leg-h"></span></span>
@@ -133,8 +136,11 @@ const I18N = {
     over:"O2.5", btts:"BTTS", win:"win", draw:"draw",
     hlModelFav:"Model favourite", hlMktFav:"Market favourite",
     hlValue:"Biggest value vs market", hlFade:"Most overpriced by market",
+    hlBoot:"Golden Boot favourite",
     foot:"Probabilities are model estimates for information only — not betting advice. Built on open data. Source on GitHub.",
-    model:"Model", market:"Market", edge:"Edge", team:"Team", prob:"Prob" },
+    model:"Model", market:"Market", edge:"Edge", team:"Team", prob:"Prob",
+    boot:"Golden Boot race", bootNote:"top-scorer probability · expected goals over the tournament",
+    player:"Player", topscorer:"Top scorer", xg:"xG", scorer:"⚽" },
   zh:{ title:"⚽ 2026 世界杯 — 预测",
     tag:"市场锚定集成模型 —— Dixon-Coles 比分模型 + ELO 实力评分,与博彩市场融合,并用蒙特卡洛模拟全部 104 场比赛。",
     updated:u=>"更新于 "+u, titleProb:"夺冠概率", r32:"晋级淘汰赛(32强)概率",
@@ -144,8 +150,11 @@ const I18N = {
     over:"大2.5", btts:"双方进球", win:"胜", draw:"平",
     hlModelFav:"模型最看好", hlMktFav:"市场最看好",
     hlValue:"相对市场最具价值", hlFade:"市场最高估",
+    hlBoot:"金靴最热门",
     foot:"以上为模型估算,仅供参考,非投注建议。基于公开数据构建,源码见 GitHub。",
-    model:"模型", market:"市场", edge:"差值", team:"球队", prob:"概率" }
+    model:"模型", market:"市场", edge:"差值", team:"球队", prob:"概率",
+    boot:"金靴奖之争", bootNote:"最佳射手概率 · 全程预期进球数",
+    player:"球员", topscorer:"最佳射手", xg:"预期进球", scorer:"⚽" }
 };
 /* ---------- team metadata: English name -> {iso, zh} ---------- */
 const TEAM = {
@@ -194,10 +203,25 @@ function cmpTable(el, rows){
         <td class="pct ${cls}">${s}${(r.edge*100).toFixed(1)}%</td></tr>`;
     }).join("");
 }
+function splitPlayer(key){ const m=key.match(/^(.*?)\s*\(([^)]+)\)\s*$/); return m?[m[1],m[2]]:[key,null]; }
+function bootTable(el, gb){
+  const tsp=(gb||{}).top_scorer_probability, xg=(gb||{}).expected_goals||{};
+  if(!tsp||!Object.keys(tsp).length){ el.innerHTML='<tr><td class="err">—</td></tr>'; return; }
+  const rows=Object.entries(tsp).slice(0,16);
+  const max=rows[0][1];
+  el.innerHTML="<tr><th>#</th><th>"+L().player+"</th><th>"+L().topscorer+"</th><th>"+L().xg+"</th><th></th></tr>"+
+    rows.map(([k,p],i)=>{const [name,team]=splitPlayer(k);
+      return `<tr><td><span class="rank">${i+1}</span></td>
+        <td><span class="tcell">${team?flag(team):""}${name}</span></td>
+        <td class="pct">${pct(p)}</td><td class="pct">${(xg[k]||0).toFixed(2)}</td>
+        <td style="width:34%"><div class="pbar"><i style="width:${(p/max*100).toFixed(0)}%"></i></div></td></tr>`;
+    }).join("");
+}
 function matchCard(m){
   if(m.error) return "";
   const h=m.p_home*100,d=m.p_draw*100,a=m.p_away*100;
   const top=(m.top_scorelines||[]).slice(0,1).map(s=>`${s.score} (${(s.p*100).toFixed(0)}%)`).join("");
+  const sc=[...(m.scorers_home||[]),...(m.scorers_away||[])].sort((x,y)=>y.exp_goals-x.exp_goals)[0];
   const lab=v=>v>=11?v.toFixed(0):"";
   return `<div class="card">
     <div class="mtop"><span>${m.date||""}</span><span>${m.city||""}</span></div>
@@ -215,6 +239,7 @@ function matchCard(m){
       <span class="chip">${L().over} <b>${pct(m.p_over_2_5)}</b></span>
       <span class="chip">${L().btts} <b>${pct(m.p_btts)}</b></span>
       ${top?`<span class="chip"><b>${top}</b></span>`:""}
+      ${sc?`<span class="chip">${L().scorer} <b>${sc.name}</b> ${pct(sc.p_score)}</span>`:""}
     </div></div>`;
 }
 function highlights(d){
@@ -225,12 +250,15 @@ function highlights(d){
     <div class="val">${flag(team)}${tName(team)}</div><div class="sub">${sub}</div></div>`;
   const mf=Object.entries(tp)[0], kf=Object.entries(mk)[0];
   const val=[...cmp].sort((a,b)=>b.edge-a.edge)[0];
-  const fade=[...cmp].sort((a,b)=>a.edge-b.edge)[0];
+  const gb=(sim.golden_boot||{}).top_scorer_probability||{};
+  const gbTop=Object.entries(gb)[0];
   let html="";
   if(mf) html+=card(L().hlModelFav, mf[0], pct(mf[1]));
   if(kf) html+=card(L().hlMktFav, kf[0], pct(kf[1]));
   if(val) html+=card(L().hlValue, val.team, `${L().model} ${pct(val.model)} · ${L().market} ${pct(val.market)} · <span class="up">+${(val.edge*100).toFixed(1)}%</span>`);
-  if(fade) html+=card(L().hlFade, fade.team, `${L().model} ${pct(fade.model)} · ${L().market} ${pct(fade.market)} · <span class="down">${(fade.edge*100).toFixed(1)}%</span>`);
+  if(gbTop){ const [nm,tm]=splitPlayer(gbTop[0]);
+    html+=`<div class="hlcard"><div class="lbl">${L().hlBoot}</div>
+      <div class="val">${tm?flag(tm):""}${nm}</div><div class="sub">${L().topscorer} ${pct(gbTop[1])}</div></div>`; }
   el.innerHTML=html;
 }
 function render(){
@@ -244,6 +272,8 @@ function render(){
   document.getElementById("t-r32").textContent=t.r32;
   document.getElementById("t-cmp").textContent=t.cmp;
   document.getElementById("t-cmp-note").textContent="· "+t.cmpNote;
+  document.getElementById("t-boot").textContent=t.boot;
+  document.getElementById("t-boot-note").textContent="· "+t.bootNote;
   document.getElementById("t-matches").textContent=t.matches;
   document.getElementById("t-leg-h").textContent=t.legH;
   document.getElementById("t-leg-d").textContent=t.legD;
@@ -256,6 +286,7 @@ function render(){
   probTable(document.getElementById("title"), sim.title_probability, 16);
   probTable(document.getElementById("r32"), sim.reach_knockout_R32, 16);
   cmpTable(document.getElementById("cmp"), DATA.title_comparison);
+  bootTable(document.getElementById("boot"), sim.golden_boot);
   const ms=(DATA.predictions||[]).filter(m=>!m.error);
   document.getElementById("mcount").textContent="· "+t.mcount(ms.length);
   document.getElementById("matches").innerHTML=ms.map(matchCard).join("");

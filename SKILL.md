@@ -60,6 +60,10 @@ PYTHONPATH=. $PY -m skill.helpers.cli predict --all --simulate
 # 模型 vs 市场(Polymarket 去抽水夺冠赔率 + edge)
 PYTHONPATH=. $PY -m skill.helpers.cli market
 
+# 球员:单场最可能射手(+ --refresh 重爬阵容)
+PYTHONPATH=. $PY -m skill.helpers.cli players --match <fixture_id>
+# 金靴/累计进球 在 predict --simulate 的 golden_boot 输出里
+
 # 回测(walk-forward, 防 lookahead)
 PYTHONPATH=. $PY -m skill.helpers.cli backtest --start 2010-01-01 --end 2026-05-31
 
