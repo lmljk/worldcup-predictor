@@ -41,6 +41,71 @@ def reconstruct_groups(fixtures: pd.DataFrame) -> list[list[str]]:
     return comps
 
 
+# Official 2026 final-draw groups (normalised to dataset names), order A..L.
+OFFICIAL_GROUPS = {
+    "A": ["Mexico", "South Korea", "South Africa", "Czech Republic"],
+    "B": ["Canada", "Qatar", "Bosnia and Herzegovina", "Switzerland"],
+    "C": ["Scotland", "Brazil", "Haiti", "Morocco"],
+    "D": ["Paraguay", "Turkey", "United States", "Australia"],
+    "E": ["Curaçao", "Ecuador", "Germany", "Ivory Coast"],
+    "F": ["Tunisia", "Japan", "Netherlands", "Sweden"],
+    "G": ["New Zealand", "Iran", "Egypt", "Belgium"],
+    "H": ["Cape Verde", "Uruguay", "Spain", "Saudi Arabia"],
+    "I": ["Senegal", "Norway", "France", "Iraq"],
+    "J": ["Algeria", "Jordan", "Argentina", "Austria"],
+    "K": ["Colombia", "DR Congo", "Portugal", "Uzbekistan"],
+    "L": ["England", "Ghana", "Croatia", "Panama"],
+}
+_GI = {c: i for i, c in enumerate("ABCDEFGHIJKL")}
+
+# Official Round-of-32 slot map (16 matches, bracket order). Each slot is
+# ('W'|'RU', group) for winners/runners-up or ('3RD', eligible_groups) for the
+# 8 third-place slots. Source: 2026 FIFA World Cup knockout-stage bracket.
+_R32 = [
+    (("RU", "A"), ("RU", "B")), (("W", "C"), ("RU", "F")),
+    (("W", "E"), ("3RD", "ABCDF")), (("W", "F"), ("RU", "C")),
+    (("RU", "E"), ("RU", "I")), (("W", "I"), ("3RD", "CDFGH")),
+    (("W", "A"), ("3RD", "CEFHI")), (("W", "L"), ("3RD", "EHIJK")),
+    (("W", "G"), ("3RD", "AEHIJ")), (("W", "D"), ("3RD", "BEFIJ")),
+    (("W", "H"), ("RU", "J")), (("RU", "K"), ("RU", "L")),
+    (("W", "B"), ("3RD", "EFGIJ")), (("RU", "D"), ("RU", "G")),
+    (("W", "J"), ("RU", "H")), (("W", "K"), ("3RD", "DEIJL")),
+]
+# flattened third-slot positions (0..31) and their eligible group-index sets
+_THIRD_POS, _THIRD_ELIG = [], []
+for _mi, (_h, _a) in enumerate(_R32):
+    for _si, _slot in enumerate((_h, _a)):
+        if _slot[0] == "3RD":
+            _THIRD_POS.append(_mi * 2 + _si)
+            _THIRD_ELIG.append({_GI[c] for c in _slot[1]})
+
+
+def _assign_thirds(qual: tuple) -> list:
+    """Bijective assignment of the 8 qualifying third-place groups to the 8 third-slots,
+    respecting each slot's eligible-group list (backtracking; memoised by caller)."""
+    qs = set(qual)
+    order = sorted(range(8), key=lambda s: len(_THIRD_ELIG[s] & qs))
+    res = {}
+
+    def bt(i, used):
+        if i == len(order):
+            return True
+        slot = order[i]
+        for g in _THIRD_ELIG[slot]:
+            if g in qs and g not in used:
+                res[slot] = g
+                used.add(g)
+                if bt(i + 1, used):
+                    return True
+                used.discard(g)
+                del res[slot]
+        return False
+
+    if bt(0, set()):
+        return [res[s] for s in range(8)]
+    return list(qual)[:8]  # fallback (shouldn't happen for valid draws)
+
+
 def _strength_arrays(model, teams: list[str]):
     atk = np.array([model.attack.get(t, 0.0) for t in teams])
     dfc = np.array([model.defence.get(t, 0.0) for t in teams])
@@ -58,7 +123,14 @@ def _rank_desc(rng, *keys) -> np.ndarray:
 def run(model, fixtures: pd.DataFrame, n: int = 50000, seed: int = 0,
         squads: dict | None = None, gb_topk: int = 12, context: dict | None = None) -> dict:
     rng = np.random.default_rng(seed)
-    groups = reconstruct_groups(fixtures)
+    fixture_teams = set(fixtures["home_team"]) | set(fixtures["away_team"])
+    # use the official A..L draw when it matches the fixtures; else fall back
+    if set(t for g in OFFICIAL_GROUPS.values() for t in g) == fixture_teams:
+        groups = [OFFICIAL_GROUPS[c] for c in "ABCDEFGHIJKL"]
+        official = True
+    else:
+        groups = reconstruct_groups(fixtures)
+        official = False
     teams = sorted({t for g in groups for t in g})
     tid = {t: i for i, t in enumerate(teams)}
     nt = len(teams)
@@ -112,21 +184,49 @@ def run(model, fixtures: pd.DataFrame, n: int = 50000, seed: int = 0,
         third_gf[:, gi] = ggf[rows, order[:, 2]]
         np.add.at(group_adv, glob[:, :2].ravel(), 1)
 
-    # 8 best third-placed
+    # 8 best third-placed (group indices that qualify, per sim)
     torder = _rank_desc(rng, third_gf, third_gd, third_pts)  # (n,12)
-    best8_local = torder[:, :8]
-    rows = np.arange(n)[:, None]
-    third_adv = third_ids[rows, best8_local]  # (n,8)
+    qual = np.sort(torder[:, :8], axis=1)  # (n,8) qualifying group indices
 
-    advancers = np.concatenate([top2_ids, third_adv], axis=1)  # (n,32)
-    np.add.at(reached["R32"], advancers.ravel(), 1)
+    win_ids = top2_ids[:, 0::2]   # (n,12) group winners, order A..L
+    ru_ids = top2_ids[:, 1::2]    # (n,12) runners-up
+
+    rows = np.arange(n)
+    if official:
+        # structured bracket: place teams into the official R32 slots
+        cur = np.empty((n, 32), dtype=int)
+        for mi, (h, a) in enumerate(_R32):
+            for si, slot in enumerate((h, a)):
+                pos = mi * 2 + si
+                if slot[0] == "W":
+                    cur[:, pos] = win_ids[:, _GI[slot[1]]]
+                elif slot[0] == "RU":
+                    cur[:, pos] = ru_ids[:, _GI[slot[1]]]
+                # '3RD' slots filled below
+        # assign qualifying thirds to the 8 third-slots (memoised by qualifying set)
+        cache = {}
+        slot_group = np.empty((n, len(_THIRD_POS)), dtype=int)
+        qlist = qual.tolist()
+        for i in range(n):
+            key = tuple(qlist[i])
+            a = cache.get(key)
+            if a is None:
+                a = cache[key] = _assign_thirds(key)
+            slot_group[i] = a
+        third_fill = np.take_along_axis(third_ids, slot_group, axis=1)  # (n,8)
+        cur[:, _THIRD_POS] = third_fill
+    else:
+        third_adv = third_ids[rows[:, None], torder[:, :8]]
+        advancers = np.concatenate([top2_ids, third_adv], axis=1)
+        perm = rng.random(advancers.shape).argsort(axis=1)
+        cur = np.take_along_axis(advancers, perm, axis=1)
+
+    np.add.at(reached["R32"], cur.ravel(), 1)
 
     # total goals each team scores across the tournament (group + every KO match played)
     tour_goals = gf.copy()
 
-    # knockout: random bracket per sim
-    perm = rng.random(advancers.shape).argsort(axis=1)
-    cur = np.take_along_axis(advancers, perm, axis=1)
+    # knockout: structured bracket (cur is in official R32 slot order, adjacent-pair tree)
     stage_names = ["R16", "QF", "SF", "final", "champion"]
     for stage in stage_names:
         k = cur.shape[1]

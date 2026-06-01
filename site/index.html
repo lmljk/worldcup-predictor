@@ -192,6 +192,7 @@ const I18N = {
     sTitle:"Title", sFinal:"Reach final", sAdvance:"Advance group", sR32:"Reach R32",
     sElo:"ELO", sAtk:"Attack", sDef:"Defence", sBoot:"Golden Boot", sExpG:"Exp. goals",
     sCaps:"Caps", sCareer:"Career goals", sShare:"Goal share", sRate:"Scoring rate",
+    sRecent:"Recent goals (2y)", penTaker:"PK taker",
     win:"Win", lose:"Lose", pscore:"P(score)", noimg:"no photo", rankN:(r,n)=>`#${r} / ${n}` },
   zh:{ title:"⚽ 2026 世界杯 — 预测",
     tag:"市场锚定集成模型 —— Dixon-Coles 比分模型 + ELO 实力评分,与博彩市场融合,并用蒙特卡洛模拟全部 104 场比赛。",
@@ -212,6 +213,7 @@ const I18N = {
     sTitle:"夺冠", sFinal:"进决赛", sAdvance:"小组出线", sR32:"进32强",
     sElo:"ELO 评分", sAtk:"进攻", sDef:"防守", sBoot:"金靴概率", sExpG:"预期进球",
     sCaps:"出场", sCareer:"生涯进球", sShare:"进球占比", sRate:"进球率",
+    sRecent:"近2年进球", penTaker:"点球手",
     win:"胜", lose:"负", pscore:"进球概率", noimg:"暂无照片", rankN:(r,n)=>`第${r}/${n}` }
 };
 /* ---------- team metadata: English name -> {iso, zh} ---------- */
@@ -466,29 +468,30 @@ function openPlayer(name,team){
   document.getElementById("sheet").innerHTML=`
     <button class="x" onclick="closeModal()">×</button>
     <div class="dh">
-      <img class="portrait" id="portrait" alt="${t.noimg}" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='74' height='74'%3E%3C/svg%3E">
-      <div><h3>${name}</h3><div class="role">${flag(team).replace('class="flag"','class="flag" style="width:20px;height:13px"')} ${tName(team)} · ${p.pos}</div></div></div>
+      ${portraitImg(name)}
+      <div><h3>${name}</h3><div class="role">${flag(team).replace('class="flag"','class="flag" style="width:20px;height:13px"')} ${tName(team)} · ${p.pos}${p.pen_taker?` · <span style="color:var(--gold)">⚽ ${t.penTaker}</span>`:""}</div></div></div>
     <div class="evalbox">${ev}</div>
     <div class="sect">${t.secOverall}</div>
     <div class="statgrid">
       ${stat(bootP?(bootP*100).toFixed(1)+"%":"—",t.sBoot)}${stat(expG??"—",t.sExpG)}
-      ${stat(p.goals+"/"+p.caps,t.sCareer+" / "+t.sCaps)}${stat((p.share*100).toFixed(0)+"%",t.sShare)}</div>
+      ${stat(p.goals+"/"+p.caps,t.sCareer+" / "+t.sCaps)}${stat(p.recent_goals??0,t.sRecent)}
+      ${stat((p.share*100).toFixed(0)+"%",t.sShare)}</div>
     <div class="sect">${t.secFactors}</div>
     <ul class="factors">
       <li><b>${t.sRate}:</b> ${p.rate} — ${zh?'生涯国家队进球率(goals/caps,主因子)':'career international scoring rate (goals/caps)'}</li>
-      <li><b>${zh?'位置先验':'Position prior'}:</b> ${p.pos} — ${zh?'按位置的基础进球倾向':'baseline scoring tendency by position'}</li>
-      <li><b>${zh?'球队进攻强度':'Team attacking strength'}:</b> ${zh?'决定每场可分配的总进球(ELO+Dixon-Coles)':'sets the goals available to share (ELO + Dixon-Coles)'}</li>
+      <li><b>${t.sRecent}:</b> ${p.recent_goals??0} — ${zh?'近2年国家队进球(状态加成,来自 goalscorers 数据)':'goals for country in last 2 years (form boost, from goalscorers data)'}</li>
+      <li><b>${zh?'点球主罚':'Penalty duties'}:</b> ${p.pen_taker?(zh?'是 — 进球占比加成':'yes — share boosted'):(zh?'否':'no')}</li>
+      <li><b>${zh?'位置先验':'Position prior'}:</b> ${p.pos} · ${zh?'球队进攻强度决定可分配总进球(ELO+Dixon-Coles)':'team attack sets goals to share (ELO + Dixon-Coles)'}</li>
     </ul>
     <div class="sect">${t.secMatches}</div>
     <div style="color:var(--mut);font-size:11.5px;margin-bottom:6px">${poissonNote}</div>${ms}`;
   showModal();
-  wikiPortrait(name);
 }
-function wikiPortrait(name){
-  fetch(`https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(name)}&prop=pageimages&piprop=thumbnail&pithumbsize=220&redirects=1&format=json&origin=*`)
-    .then(r=>r.json()).then(j=>{const pg=Object.values(((j.query||{}).pages)||{})[0];
-      const th=pg&&pg.thumbnail&&pg.thumbnail.source; const el=document.getElementById("portrait");
-      if(th&&el) el.src=th;}).catch(()=>{});
+const PLACEHOLDER="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='74' height='74'%3E%3Crect width='74' height='74' fill='%231a2233'/%3E%3Ccircle cx='37' cy='29' r='14' fill='%2326304a'/%3E%3Crect x='15' y='48' width='44' height='30' rx='14' fill='%2326304a'/%3E%3C/svg%3E";
+function portraitImg(name){
+  const f=(DATA.portraits||{})[name];
+  const src=f?`./portraits/${f}`:PLACEHOLDER;
+  return `<img class="portrait" alt="" src="${src}" onerror="this.onerror=null;this.src='${PLACEHOLDER}'">`;
 }
 function showModal(){document.getElementById("modal").className="modal on";document.body.style.overflow="hidden";}
 function closeModal(){document.getElementById("modal").className="modal";document.body.style.overflow="";}

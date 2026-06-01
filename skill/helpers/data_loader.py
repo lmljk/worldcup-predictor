@@ -43,6 +43,26 @@ def load_results(played_only: bool = True) -> pd.DataFrame:
     return df.sort_values("date").reset_index(drop=True)
 
 
+MARTJ42_GOALSCORERS_URL = (
+    "https://raw.githubusercontent.com/martj42/international_results/master/goalscorers.csv"
+)
+GOALSCORERS_CSV = paths.HISTORICAL / "goalscorers.csv"
+
+
+def fetch_goalscorers(force: bool = False) -> pd.DataFrame:
+    """martj42 goalscorers (date, team, scorer, penalty, own_goal) — free, no auth.
+    Powers recent-form and penalty-taker signals for the player model."""
+    if force or not GOALSCORERS_CSV.exists():
+        r = requests.get(MARTJ42_GOALSCORERS_URL, headers=UA, timeout=60)
+        r.raise_for_status()
+        GOALSCORERS_CSV.write_bytes(r.content)
+    df = pd.read_csv(GOALSCORERS_CSV)
+    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    for c in ("penalty", "own_goal"):
+        df[c] = df[c].astype(str).str.upper().eq("TRUE")
+    return df.dropna(subset=["date", "scorer"])
+
+
 def load_wc2026_fixtures() -> pd.DataFrame:
     """Future WC2026 rows (scores still NA) = the fixture list to predict."""
     df = fetch_historical()

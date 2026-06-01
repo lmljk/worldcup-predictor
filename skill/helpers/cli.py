@@ -34,6 +34,14 @@ def _cmd_predict(args):
     model = dc.fit(results, as_of=as_of)
     squads = data_loader.fetch_squads()
 
+    # recent international form + penalty-taker flags (goalscorers dataset, free)
+    try:
+        from ..model.players import enrich_form
+        squads = enrich_form(squads, data_loader.fetch_goalscorers(),
+                             since=as_of - pd.Timedelta(days=730))
+    except Exception as e:  # noqa: BLE001
+        print(f"[form skipped] {e}", file=sys.stderr)
+
     # squad-talent prior (clubelo): nudge strength toward roster quality the
     # results-based model misses (e.g. France). Transparent, surfaced as a factor.
     talent = {}
@@ -121,7 +129,8 @@ def _detail_payload(model, results, fixtures, squads, sim, talent=None):
             continue
         share = {n: sh for n, _p, sh in goal_shares(s)}
         sq[t] = [{"name": p["name"], "pos": p["pos"], "caps": p["caps"], "goals": p["goals"],
-                  "rate": round(player_rate(p), 3), "share": round(share.get(p["name"], 0.0), 4)}
+                  "rate": round(player_rate(p), 3), "share": round(share.get(p["name"], 0.0), 4),
+                  "recent_goals": p.get("recent_goals", 0), "pen_taker": bool(p.get("pen_taker"))}
                  for p in s]
     return tf, sq
 
@@ -149,6 +158,80 @@ def _predict_one(model, row, squads=None, ctx=None) -> dict:
         mp["scorers_away"] = match_scorers(lam_a * am, squads.get(away, []), topn=3)
     # NOTE: market blend + context adjustments wired once live odds feed exists (M3/M5).
     return mp
+
+
+def _slug(name: str) -> str:
+    import re
+    import unicodedata
+    s = unicodedata.normalize("NFD", name).encode("ascii", "ignore").decode()
+    return re.sub(r"[^a-z0-9]+", "_", s.lower()).strip("_")
+
+
+def _cmd_portraits(args):
+    """Pre-download player photos from Wikipedia and self-host them in site/portraits/.
+
+    Wikipedia/Wikimedia are blocked in mainland China, so client-side fetch fails there.
+    We download server-side (proxy) and serve via our own Cloudflare tunnel instead.
+    """
+    import requests
+
+    from ..model.players import goal_shares
+
+    squads = data_loader.fetch_squads()
+    # target: top-K goal-share players per team (covers match scorers + Golden Boot)
+    names = []
+    for t, ps in squads.items():
+        top = sorted(goal_shares(ps), key=lambda x: -x[2])[: args.topk]
+        names += [n for n, _p, _s in top]
+    names = sorted(set(names))
+    print(f"fetching portraits for {len(names)} players…")
+
+    UA = {"User-Agent": "worldcup-predictor/0.1"}
+    api = "https://en.wikipedia.org/w/api.php"
+    url_map = {}
+    for i in range(0, len(names), 50):
+        batch = names[i:i + 50]
+        try:
+            j = requests.get(api, params={
+                "action": "query", "titles": "|".join(batch), "prop": "pageimages",
+                "piprop": "thumbnail", "pithumbsize": "240", "redirects": "1",
+                "format": "json"}, headers=UA, timeout=30).json().get("query", {})
+        except requests.RequestException:
+            continue
+        redir = {}
+        for n in j.get("normalized", []):
+            redir[n["from"]] = n["to"]
+        for n in j.get("redirects", []):
+            redir[n["from"]] = n["to"]
+
+        def _final(t):
+            seen = set()
+            while t in redir and t not in seen:
+                seen.add(t)
+                t = redir[t]
+            return t
+
+        pages = {p.get("title"): p.get("thumbnail", {}).get("source")
+                 for p in j.get("pages", {}).values()}
+        for b in batch:
+            u = pages.get(_final(b))
+            if u:
+                url_map[b] = u
+
+    pdir = paths.SITE / "portraits"
+    pdir.mkdir(exist_ok=True)
+    portraits = {}
+    for name, u in url_map.items():
+        fn = _slug(name) + ".jpg"
+        try:
+            img = requests.get(u, headers=UA, timeout=30)
+            if img.status_code == 200 and img.content:
+                (pdir / fn).write_bytes(img.content)
+                portraits[name] = fn
+        except requests.RequestException:
+            continue
+    (paths.DATA / "portraits.json").write_text(json.dumps(portraits, ensure_ascii=False))
+    print(f"downloaded {len(portraits)} portraits -> {pdir}")
 
 
 def _cmd_players(args):
@@ -267,6 +350,8 @@ def _cmd_publish(args):
         "simulation": sim,
         "team_factors": json.loads(tf_f.read_text()) if tf_f.exists() else {},
         "squads": json.loads(sq_f.read_text()) if sq_f.exists() else {},
+        "portraits": json.loads((paths.DATA / "portraits.json").read_text())
+        if (paths.DATA / "portraits.json").exists() else {},
     }
     # Market anchor: Polymarket title odds vs our Monte Carlo (model-vs-market + edge).
     model_title = sim.get("title_probability", {})
@@ -335,6 +420,10 @@ def main(argv=None):
     pl.add_argument("--match", default=None)
     pl.add_argument("--refresh", action="store_true")
     pl.set_defaults(func=_cmd_players)
+
+    pp2 = sub.add_parser("portraits")
+    pp2.add_argument("--topk", type=int, default=10)
+    pp2.set_defaults(func=_cmd_portraits)
 
     pb = sub.add_parser("backtest")
     pb.add_argument("--start", default="2010-01-01")

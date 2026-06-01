@@ -83,6 +83,27 @@ wired for the in-tournament review loop, not pre-tournament.
 Applied to per-match prediction and the group-stage Monte Carlo; knockout matches stay neutral
 (venues TBD until the bracket resolves).
 
+## Run 5 — player recent form + penalty takers (free, goalscorers dataset)
+
+martj42 `goalscorers.csv` (47.6k goals with scorer + penalty flag, free) → per player:
+recent international goals (last 2y) and penalty-taker flag (≥3 career penalties). Folded
+into goal share as `career_rate × (1 + 0.06·recent_goals, capped 1.5) × (1.15 if PK taker)`.
+Effect on the Golden Boot: Kane 6.5%→**13.1%** (14 recent goals + PK taker + England's focal
+point), and recent form correctly elevates Lautaro near Messi. Sharpens the player layer from
+"career rate only" to "career + current form + set-piece duty". Names matched by normalised
+string within national team.
+
+## Run 6 — official knockout bracket (free, pure engineering)
+
+Replaced the random per-sim bracket with the **official 2026 R32 slot map** (group winners vs
+third-placed; runners-up vs runners-up; same-group separation until QF+). Official A–L groups
+from the final draw; the 8 best thirds are assigned to their 8 eligible slots by a
+backtracking matcher (memoised by qualifying-set → ~instant; 30k sims in ~0.4s). Now title
+odds are **draw-aware** (a team's path depends on its real group/position, not an average
+field): France 8.7%→9.7%, England→12.6%. Bracket tree uses the published adjacent-pair order.
+Approximation vs FIFA Annex C: the *exact* third-to-slot row isn't replicated, but eligibility
++ same-group separation are enforced (legal, realistic paths).
+
 ## Open items
 - **Historical raw-market 1X2 baseline** for internationals isn't available free at scale
   (The Odds API soccer/historical is paid; football-data.co.uk is club leagues only). Two

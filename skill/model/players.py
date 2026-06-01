@@ -26,11 +26,52 @@ def player_rate(p: dict) -> float:
     return (goals + SHRINK * prior) / (caps + SHRINK)
 
 
+def _weight(p: dict) -> float:
+    """Goal-share weight = career rate × recent-form boost × penalty-taker boost.
+
+    Recent form and penalty duties come from the goalscorers dataset (see enrich_form).
+    Both are modest, transparent multipliers on top of the career scoring rate.
+    """
+    base = player_rate(p)
+    form_mult = min(1.5, 1.0 + 0.06 * p.get("recent_goals", 0))   # in-form scorers
+    pen_mult = 1.15 if p.get("pen_taker") else 1.0                 # penalty taker
+    return base * form_mult * pen_mult
+
+
 def goal_shares(squad: list[dict]) -> list[tuple[str, str, float]]:
     """Return [(name, pos, share)] with shares summing to 1 over the squad."""
-    rates = [(p["name"], p.get("pos", "MF"), player_rate(p)) for p in squad]
+    rates = [(p["name"], p.get("pos", "MF"), _weight(p)) for p in squad]
     tot = sum(r for _, _, r in rates) or 1.0
     return [(n, pos, r / tot) for n, pos, r in rates]
+
+
+def enrich_form(squads: dict, goalscorers, since) -> dict:
+    """Annotate each squad player with recent international goals + penalty-taker flag.
+
+    Matched by normalised name within the player's national team. Mutates and returns squads.
+    """
+    import re
+    import unicodedata
+
+    def norm(s):
+        s = unicodedata.normalize("NFD", str(s)).encode("ascii", "ignore").decode()
+        return re.sub(r"[^a-z0-9]", "", s.lower())
+
+    gs = goalscorers[(goalscorers["own_goal"] == False)]  # noqa: E712
+    recent = gs[gs["date"] >= since]
+    # per (team, normalised scorer): recent goal count
+    rec_counts, pen_counts = {}, {}
+    for r in recent.itertuples(index=False):
+        rec_counts[(r.team, norm(r.scorer))] = rec_counts.get((r.team, norm(r.scorer)), 0) + 1
+    for r in gs.itertuples(index=False):  # penalty takers from full history
+        if r.penalty:
+            pen_counts[(r.team, norm(r.scorer))] = pen_counts.get((r.team, norm(r.scorer)), 0) + 1
+    for team, ps in squads.items():
+        for p in ps:
+            key = (team, norm(p["name"]))
+            p["recent_goals"] = rec_counts.get(key, 0)
+            p["pen_taker"] = pen_counts.get(key, 0) >= 3
+    return squads
 
 
 def match_scorers(lam_team: float, squad: list[dict], topn: int = 5) -> list[dict]:

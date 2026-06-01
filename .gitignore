@@ -32,3 +32,7 @@ deploy/cloudflared-worldcup.yml
 # scraped squad data (regenerable via fetch_squads)
 data/squads_wc2026.json
 data/club_elo.json
+
+# self-hosted player portraits (regenerable via 'portraits')
+site/portraits/
+data/portraits.json
