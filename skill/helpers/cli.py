@@ -51,6 +51,7 @@ def _cmd_predict(args):
     rep.write_text(json.dumps(preds, indent=2, ensure_ascii=False, default=str))
     print(f"wrote {len(preds)} predictions -> {rep}")
 
+    sim = None
     if args.simulate:
         from ..sim import montecarlo
         sim = montecarlo.run(model, fixtures, n=args.sims, squads=squads)
@@ -66,6 +67,43 @@ def _cmd_predict(args):
             print("Golden Boot (top scorer prob):")
             for name, p in list(gb.items())[:6]:
                 print(f"  {name:<34} {p*100:5.1f}%")
+
+    # detail data for the dashboard's team/player search views
+    tf, sq = _detail_payload(model, results, fixtures, squads, sim)
+    (paths.report_dir() / "team_factors.json").write_text(json.dumps(tf, ensure_ascii=False))
+    (paths.report_dir() / "squads_shares.json").write_text(json.dumps(sq, ensure_ascii=False))
+
+
+def _detail_payload(model, results, fixtures, squads, sim):
+    """Per-team model factors + per-player goal shares — powers the search detail views."""
+    from ..model.elo import compute_elo_history
+    from ..model.players import goal_shares, player_rate
+
+    _, elo = compute_elo_history(results)
+    teams = sorted(set(fixtures["home_team"]) | set(fixtures["away_team"]))
+    sim = sim or {}
+    tp, adv = sim.get("title_probability", {}), sim.get("advance_group_top2", {})
+    r32, fin = sim.get("reach_knockout_R32", {}), sim.get("reach_final", {})
+    hosts = {"United States", "Canada", "Mexico"}
+    tf = {}
+    for t in teams:
+        tf[t] = {
+            "elo": round(float(elo.get(t, 1500)), 0),
+            "attack": round(model.attack.get(t, 0.0), 3),
+            "defence": round(model.defence.get(t, 0.0), 3),
+            "host": t in hosts,
+            "title": tp.get(t), "advance": adv.get(t), "r32": r32.get(t), "final": fin.get(t),
+        }
+    sq = {}
+    for t in teams:
+        s = squads.get(t)
+        if not s:
+            continue
+        share = {n: sh for n, _p, sh in goal_shares(s)}
+        sq[t] = [{"name": p["name"], "pos": p["pos"], "caps": p["caps"], "goals": p["goals"],
+                  "rate": round(player_rate(p), 3), "share": round(share.get(p["name"], 0.0), 4)}
+                 for p in s]
+    return tf, sq
 
 
 def _predict_one(model, row, squads=None) -> dict:
@@ -197,11 +235,14 @@ def _cmd_publish(args):
         print(f"no predictions at {preds_f} — run `predict --all --simulate` first", file=sys.stderr)
         sys.exit(1)
     sim = json.loads(sim_f.read_text()) if sim_f.exists() else {}
+    tf_f, sq_f = rep / "team_factors.json", rep / "squads_shares.json"
     data = {
         "generated_at": _dt.datetime.now().isoformat(timespec="minutes"),
         "report_date": rep.name,
         "predictions": json.loads(preds_f.read_text()),
         "simulation": sim,
+        "team_factors": json.loads(tf_f.read_text()) if tf_f.exists() else {},
+        "squads": json.loads(sq_f.read_text()) if sq_f.exists() else {},
     }
     # Market anchor: Polymarket title odds vs our Monte Carlo (model-vs-market + edge).
     model_title = sim.get("title_probability", {})

@@ -75,6 +75,41 @@
   .dot{display:inline-block;width:10px;height:10px;border-radius:3px;vertical-align:middle;margin-right:5px;}
   footer{color:var(--mut);font-size:12px;margin-top:34px;border-top:1px solid var(--line);padding-top:16px;}
   .err{color:var(--mut);padding:18px;}
+  /* search */
+  .searchbox{position:relative;margin-top:16px;max-width:520px;}
+  #search{width:100%;padding:11px 15px;border-radius:11px;border:1px solid rgba(255,255,255,.28);
+          background:rgba(0,0,0,.25);color:#fff;font-size:14.5px;outline:none;}
+  #search::placeholder{color:#cfd9f0;opacity:.8;}
+  .results{position:absolute;top:46px;left:0;right:0;background:var(--card);border:1px solid var(--line);
+           border-radius:11px;max-height:340px;overflow:auto;z-index:30;box-shadow:0 14px 40px rgba(0,0,0,.5);display:none;}
+  .results.on{display:block;}
+  .ritem{display:flex;align-items:center;gap:9px;padding:9px 13px;cursor:pointer;border-bottom:1px solid var(--line);font-size:14px;}
+  .ritem:hover{background:rgba(90,162,255,.12);}
+  .ritem .kind{margin-left:auto;font-size:11px;color:var(--mut);border:1px solid var(--line);border-radius:6px;padding:1px 7px;}
+  /* modal */
+  .modal{position:fixed;inset:0;background:rgba(5,8,14,.72);backdrop-filter:blur(3px);
+         display:none;align-items:flex-start;justify-content:center;z-index:50;padding:40px 16px;overflow:auto;}
+  .modal.on{display:flex;}
+  .sheet{background:var(--bg2);border:1px solid var(--line);border-radius:18px;max-width:680px;width:100%;
+         padding:22px 24px 26px;box-shadow:0 24px 70px rgba(0,0,0,.6);}
+  .sheet .x{float:right;background:none;border:none;color:var(--mut);font-size:24px;cursor:pointer;line-height:1;}
+  .dh{display:flex;align-items:center;gap:14px;margin-bottom:6px;}
+  .dh .flag{width:42px;height:28px;}
+  .dh .portrait{width:74px;height:74px;border-radius:12px;object-fit:cover;background:var(--card2);border:1px solid var(--line);}
+  .dh h3{margin:0;font-size:23px;}
+  .dh .role{color:var(--mut);font-size:13px;margin-top:2px;}
+  .statgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;margin:16px 0;}
+  .stat{background:var(--card);border:1px solid var(--line);border-radius:11px;padding:11px 13px;}
+  .stat .n{font-size:20px;font-weight:700;}
+  .stat .k{color:var(--mut);font-size:11.5px;margin-top:2px;}
+  .evalbox{background:var(--card);border-left:3px solid var(--acc2);border-radius:9px;padding:11px 14px;color:#d9e2f2;font-size:13.5px;margin-bottom:6px;}
+  .factors{margin:14px 0;}
+  .factors li{margin:6px 0;color:var(--mut);font-size:13px;}
+  .factors b{color:var(--txt);}
+  .dmatch{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--line);font-size:13.5px;}
+  .dmatch .res{margin-left:auto;font-variant-numeric:tabular-nums;color:var(--mut);}
+  .dmatch .res b{color:var(--txt);}
+  .sect{font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--mut);margin:18px 0 6px;}
 </style>
 </head>
 <body>
@@ -90,7 +125,14 @@
       <button id="lang-zh" onclick="setLang('zh')">中文</button>
     </div>
   </div>
+  <div class="searchbox">
+    <input id="search" autocomplete="off" oninput="onSearch(this.value)" onfocus="onSearch(this.value)" placeholder="">
+    <div class="results" id="results"></div>
+  </div>
 </div></div>
+<div class="modal" id="modal" onclick="if(event.target===this)closeModal()">
+  <div class="sheet" id="sheet"></div>
+</div>
 
 <div class="wrap">
   <div class="hl" id="highlights"></div>
@@ -140,7 +182,13 @@ const I18N = {
     foot:"Probabilities are model estimates for information only — not betting advice. Built on open data. Source on GitHub.",
     model:"Model", market:"Market", edge:"Edge", team:"Team", prob:"Prob",
     boot:"Golden Boot race", bootNote:"top-scorer probability · expected goals over the tournament",
-    player:"Player", topscorer:"Top scorer", xg:"xG", scorer:"⚽" },
+    player:"Player", topscorer:"Top scorer", xg:"xG", scorer:"⚽",
+    search:"🔍 Search a team or player…", kindTeam:"Team", kindPlayer:"Player",
+    secOverall:"Overall", secFactors:"What this prediction is based on", secMatches:"Match by match",
+    sTitle:"Title", sFinal:"Reach final", sAdvance:"Advance group", sR32:"Reach R32",
+    sElo:"ELO", sAtk:"Attack", sDef:"Defence", sBoot:"Golden Boot", sExpG:"Exp. goals",
+    sCaps:"Caps", sCareer:"Career goals", sShare:"Goal share", sRate:"Scoring rate",
+    win:"Win", lose:"Lose", pscore:"P(score)", noimg:"no photo", rankN:(r,n)=>`#${r} / ${n}` },
   zh:{ title:"⚽ 2026 世界杯 — 预测",
     tag:"市场锚定集成模型 —— Dixon-Coles 比分模型 + ELO 实力评分,与博彩市场融合,并用蒙特卡洛模拟全部 104 场比赛。",
     updated:u=>"更新于 "+u, titleProb:"夺冠概率", r32:"晋级淘汰赛(32强)概率",
@@ -154,7 +202,13 @@ const I18N = {
     foot:"以上为模型估算,仅供参考,非投注建议。基于公开数据构建,源码见 GitHub。",
     model:"模型", market:"市场", edge:"差值", team:"球队", prob:"概率",
     boot:"金靴奖之争", bootNote:"最佳射手概率 · 全程预期进球数",
-    player:"球员", topscorer:"最佳射手", xg:"预期进球", scorer:"⚽" }
+    player:"球员", topscorer:"最佳射手", xg:"预期进球", scorer:"⚽",
+    search:"🔍 搜索球队或球员…", kindTeam:"球队", kindPlayer:"球员",
+    secOverall:"总体预测", secFactors:"这项预测基于哪些数据", secMatches:"逐场预测",
+    sTitle:"夺冠", sFinal:"进决赛", sAdvance:"小组出线", sR32:"进32强",
+    sElo:"ELO 评分", sAtk:"进攻", sDef:"防守", sBoot:"金靴概率", sExpG:"预期进球",
+    sCaps:"出场", sCareer:"生涯进球", sShare:"进球占比", sRate:"进球率",
+    win:"胜", lose:"负", pscore:"进球概率", noimg:"暂无照片", rankN:(r,n)=>`第${r}/${n}` }
 };
 /* ---------- team metadata: English name -> {iso, zh} ---------- */
 const TEAM = {
@@ -272,6 +326,7 @@ function render(){
   document.getElementById("t-r32").textContent=t.r32;
   document.getElementById("t-cmp").textContent=t.cmp;
   document.getElementById("t-cmp-note").textContent="· "+t.cmpNote;
+  document.getElementById("search").placeholder=t.search;
   document.getElementById("t-boot").textContent=t.boot;
   document.getElementById("t-boot-note").textContent="· "+t.bootNote;
   document.getElementById("t-matches").textContent=t.matches;
@@ -291,7 +346,118 @@ function render(){
   document.getElementById("mcount").textContent="· "+t.mcount(ms.length);
   document.getElementById("matches").innerHTML=ms.map(matchCard).join("");
 }
-fetch("./data.json").then(r=>r.json()).then(d=>{DATA=d;render();}).catch(()=>render());
+/* ---------- search + detail views ---------- */
+let SIDX=[];
+function buildSearch(){
+  SIDX=[];
+  Object.keys(DATA.team_factors||{}).forEach(t=>SIDX.push({type:"team",name:t,team:t}));
+  Object.entries(DATA.squads||{}).forEach(([t,ps])=>ps.forEach(p=>SIDX.push({type:"player",name:p.name,team:t,pos:p.pos})));
+}
+function onSearch(q){
+  const box=document.getElementById("results"); q=(q||"").trim().toLowerCase();
+  if(!q){ box.className="results"; return; }
+  const zh=LANG==="zh";
+  const hits=SIDX.filter(s=>s.name.toLowerCase().includes(q)||(zh&&s.type==="team"&&tName(s.name).includes(q))).slice(0,30);
+  if(!hits.length){ box.className="results"; return; }
+  box.innerHTML=hits.map((h,i)=>`<div class="ritem" onclick="pick(${i})">
+    ${flag(h.team)}<span>${h.type==="player"?h.name+' · '+tName(h.team):tName(h.name)}</span>
+    <span class="kind">${h.type==="team"?L().kindTeam:L().kindPlayer}</span></div>`).join("");
+  box._hits=hits; box.className="results on";
+}
+function pick(i){
+  const h=document.getElementById("results")._hits[i];
+  document.getElementById("results").className="results";
+  document.getElementById("search").value="";
+  if(h.type==="team") openTeam(h.team); else openPlayer(h.name,h.team);
+}
+function rankOf(val,key,hi=true){
+  const vals=Object.values(DATA.team_factors).map(x=>x[key]).filter(v=>v!=null).sort((a,b)=>hi?b-a:a-b);
+  return vals.indexOf(val)+1;
+}
+function teamMatches(team){
+  return (DATA.predictions||[]).filter(m=>!m.error&&(m.home===team||m.away===team)).map(m=>{
+    const home=m.home===team;
+    return {opp:home?m.away:m.home, date:m.date, home,
+      win:home?m.p_home:m.p_away, draw:m.p_draw, lose:home?m.p_away:m.p_home,
+      lamTeam:home?m.lambda_home:m.lambda_away};
+  });
+}
+function teamEval(tf){
+  const T=(tf.title||0)*100, zh=LANG==="zh";
+  let tier = T>=10?(zh?"顶级争冠热门":"top title contender"):T>=4?(zh?"有力竞争者":"strong contender"):T>=1?(zh?"黑马":"a dark horse"):(zh?"以出线为目标":"aiming to escape the group");
+  const style = tf.attack>tf.defence?(zh?"进攻型打法":"attack-minded"):(zh?"防守稳健":"defensively solid");
+  const er=rankOf(tf.elo,"elo");
+  return zh?`${tName(tf._name)} 是${tier}(ELO 全场第 ${er}),整体偏${style}。模型给出约 ${T.toFixed(1)}% 夺冠、${((tf.advance||0)*100).toFixed(0)}% 小组出线。`
+          :`${tf._name} is ${tier} (ELO #${er}), ${style}. The model gives ~${T.toFixed(1)}% to win it all and ${((tf.advance||0)*100).toFixed(0)}% to advance.`;
+}
+function stat(n,k){ return `<div class="stat"><div class="n">${n}</div><div class="k">${k}</div></div>`; }
+function openTeam(team){
+  const tf=DATA.team_factors[team]; if(!tf){return;} tf._name=team;
+  const t=L(), N=Object.keys(DATA.team_factors).length;
+  const pct1=x=>x==null?"—":(x*100).toFixed(1)+"%";
+  const ms=teamMatches(team).map(m=>`<div class="dmatch">${flag(m.opp)}<span>vs ${tName(m.opp)}</span>
+     <span style="color:var(--mut);font-size:12px">${m.date}${m.home?"":" (A)"}</span>
+     <span class="res"><b class="up">${t.win} ${(m.win*100).toFixed(0)}%</b> · ${t.win==='胜'?'平':'D'} ${(m.draw*100).toFixed(0)}% · ${t.lose} ${(m.lose*100).toFixed(0)}%</span></div>`).join("");
+  document.getElementById("sheet").innerHTML=`
+    <button class="x" onclick="closeModal()">×</button>
+    <div class="dh">${flag(team).replace('class="flag"','class="flag" style="width:42px;height:28px"')}
+      <div><h3>${tName(team)}</h3><div class="role">${teamEval(tf)}</div></div></div>
+    <div class="sect">${t.secOverall}</div>
+    <div class="statgrid">
+      ${stat(pct1(tf.title),t.sTitle)}${stat(pct1(tf.final),t.sFinal)}
+      ${stat(pct1(tf.advance),t.sAdvance)}${stat(pct1(tf.r32),t.sR32)}</div>
+    <div class="sect">${t.secFactors}</div>
+    <ul class="factors">
+      <li><b>${t.sElo}:</b> ${tf.elo} · ${t.rankN(rankOf(tf.elo,"elo"),N)} — ${LANG==='zh'?'基于全部国际比赛历史的实力评分(预测的主因子)':'strength from full international match history (the dominant input)'}</li>
+      <li><b>${t.sAtk}/${t.sDef}:</b> ${tf.attack} / ${tf.defence} — ${LANG==='zh'?'Dixon-Coles 进攻/防守系数(近 8 年,时间加权)':'Dixon-Coles attack/defence (last 8 yrs, time-weighted)'}</li>
+      ${tf.host?`<li><b>${LANG==='zh'?'东道主':'Host'}:</b> ${LANG==='zh'?'享主场优势(美/加/墨)':'home advantage applied'}</li>`:""}
+    </ul>
+    <div class="sect">${t.secMatches}</div>${ms}`;
+  showModal();
+}
+function openPlayer(name,team){
+  const sq=(DATA.squads[team]||[]); const p=sq.find(x=>x.name===name); if(!p){return;}
+  const t=L(), gb=(DATA.simulation.golden_boot||{}); const key=`${name} (${team})`;
+  const bootP=(gb.top_scorer_probability||{})[key], expG=(gb.expected_goals||{})[key];
+  const ms=teamMatches(team).map(m=>{const lp=m.lamTeam*p.share; const ps=1-Math.exp(-lp);
+    return `<div class="dmatch">${flag(m.opp)}<span>vs ${tName(m.opp)}</span>
+      <span style="color:var(--mut);font-size:12px">${m.date}</span>
+      <span class="res"><b>${t.pscore} ${(ps*100).toFixed(1)}%</b> · xG ${lp.toFixed(2)}</span></div>`;}).join("");
+  const zh=LANG==="zh";
+  const ev=zh?`${name}(${tName(team)},${p.pos})生涯 ${p.caps} 场 ${p.goals} 球,进球率 ${p.rate}。模型估其包揽全队约 ${(p.share*100).toFixed(0)}% 进球,金靴概率 ${bootP?(bootP*100).toFixed(1)+'%':'—'},全程预期 ${expG||'—'} 球。`
+              :`${name} (${tName(team)}, ${p.pos}): ${p.goals} goals in ${p.caps} caps (rate ${p.rate}). Carries ~${(p.share*100).toFixed(0)}% of the team's goals; Golden Boot ${bootP?(bootP*100).toFixed(1)+'%':'—'}, ~${expG||'—'} goals expected.`;
+  document.getElementById("sheet").innerHTML=`
+    <button class="x" onclick="closeModal()">×</button>
+    <div class="dh">
+      <img class="portrait" id="portrait" alt="${t.noimg}" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='74' height='74'%3E%3C/svg%3E">
+      <div><h3>${name}</h3><div class="role">${flag(team).replace('class="flag"','class="flag" style="width:20px;height:13px"')} ${tName(team)} · ${p.pos}</div></div></div>
+    <div class="evalbox">${ev}</div>
+    <div class="sect">${t.secOverall}</div>
+    <div class="statgrid">
+      ${stat(bootP?(bootP*100).toFixed(1)+"%":"—",t.sBoot)}${stat(expG??"—",t.sExpG)}
+      ${stat(p.goals+"/"+p.caps,t.sCareer+" / "+t.sCaps)}${stat((p.share*100).toFixed(0)+"%",t.sShare)}</div>
+    <div class="sect">${t.secFactors}</div>
+    <ul class="factors">
+      <li><b>${t.sRate}:</b> ${p.rate} — ${zh?'生涯国家队进球率(goals/caps,主因子)':'career international scoring rate (goals/caps)'}</li>
+      <li><b>${zh?'位置先验':'Position prior'}:</b> ${p.pos} — ${zh?'按位置的基础进球倾向':'baseline scoring tendency by position'}</li>
+      <li><b>${zh?'球队进攻强度':'Team attacking strength'}:</b> ${zh?'决定每场可分配的总进球(ELO+Dixon-Coles)':'sets the goals available to share (ELO + Dixon-Coles)'}</li>
+    </ul>
+    <div class="sect">${t.secMatches}</div>${ms}`;
+  showModal();
+  wikiPortrait(name);
+}
+function wikiPortrait(name){
+  fetch(`https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(name)}&prop=pageimages&piprop=thumbnail&pithumbsize=220&redirects=1&format=json&origin=*`)
+    .then(r=>r.json()).then(j=>{const pg=Object.values(((j.query||{}).pages)||{})[0];
+      const th=pg&&pg.thumbnail&&pg.thumbnail.source; const el=document.getElementById("portrait");
+      if(th&&el) el.src=th;}).catch(()=>{});
+}
+function showModal(){document.getElementById("modal").className="modal on";document.body.style.overflow="hidden";}
+function closeModal(){document.getElementById("modal").className="modal";document.body.style.overflow="";}
+document.addEventListener("keydown",e=>{if(e.key==="Escape")closeModal();});
+document.addEventListener("click",e=>{if(!e.target.closest(".searchbox"))document.getElementById("results").className="results";});
+
+fetch("./data.json").then(r=>r.json()).then(d=>{DATA=d;buildSearch();render();}).catch(()=>render());
 render();
 </script>
 </body>
