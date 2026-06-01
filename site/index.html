@@ -3,114 +3,265 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>World Cup 2026 — Live Predictions</title>
+<title>World Cup 2026 Predictions · 2026 世界杯预测</title>
 <style>
-  :root { --bg:#0e1116; --card:#171c24; --line:#252c37; --txt:#e6e9ef; --mut:#8b95a5;
-          --acc:#3fb950; --acc2:#58a6ff; --warn:#d29922; }
-  * { box-sizing:border-box; }
-  body { margin:0; background:var(--bg); color:var(--txt);
-         font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
-  header { padding:24px 20px 8px; max-width:1100px; margin:0 auto; }
-  h1 { margin:0 0 4px; font-size:24px; }
-  .sub { color:var(--mut); font-size:13px; }
-  main { max-width:1100px; margin:0 auto; padding:12px 20px 60px; }
-  h2 { font-size:16px; margin:28px 0 12px; border-bottom:1px solid var(--line); padding-bottom:6px; }
-  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(290px,1fr)); gap:12px; }
-  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px 14px; }
-  .match-top { display:flex; justify-content:space-between; font-size:12px; color:var(--mut); margin-bottom:6px; }
-  .teams { font-weight:600; margin-bottom:8px; }
-  .bar { display:flex; height:22px; border-radius:5px; overflow:hidden; font-size:11px; }
-  .bar span { display:flex; align-items:center; justify-content:center; color:#0b0e13; font-weight:600; }
-  .h{background:var(--acc2);} .d{background:#6e7681;} .a{background:var(--acc);}
-  .meta { display:flex; gap:14px; margin-top:8px; color:var(--mut); font-size:12px; flex-wrap:wrap; }
-  table { width:100%; border-collapse:collapse; font-size:14px; }
-  td,th { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); }
-  th { color:var(--mut); font-weight:500; font-size:12px; }
-  .pbar { background:var(--line); border-radius:4px; height:8px; position:relative; min-width:80px; }
-  .pbar > i { position:absolute; left:0; top:0; bottom:0; background:var(--acc); border-radius:4px; }
-  .pct { font-variant-numeric:tabular-nums; }
-  .cols { display:grid; grid-template-columns:1fr 1fr; gap:24px; }
-  @media (max-width:720px){ .cols{grid-template-columns:1fr;} }
-  .tag { font-size:11px; color:var(--warn); }
+  :root{
+    --bg:#0b0f17; --bg2:#0e1420; --card:#151c2b; --card2:#1a2233; --line:#26304a;
+    --txt:#eef2f8; --mut:#94a0b6; --acc:#37d67a; --acc2:#5aa2ff; --gold:#f5c451;
+    --red:#ff6b6b; --grad:linear-gradient(135deg,#1d6fe0 0%,#7c3aed 55%,#e0457b 100%);
+  }
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{margin:0;background:radial-gradient(1200px 600px at 80% -10%,#16213a 0%,var(--bg) 60%);
+       color:var(--txt);font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;}
+  .wrap{max-width:1180px;margin:0 auto;padding:0 20px;}
+  /* hero */
+  .hero{background:var(--grad);border-radius:0 0 22px 22px;padding:30px 0 26px;position:relative;overflow:hidden;}
+  .hero::after{content:"⚽";position:absolute;right:-10px;top:-30px;font-size:220px;opacity:.08;}
+  .hero .wrap{position:relative;z-index:1;}
+  .toprow{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;}
+  h1{margin:0;font-size:27px;font-weight:750;letter-spacing:.2px;}
+  .tagline{color:#dce6ff;opacity:.95;font-size:13.5px;margin-top:5px;max-width:680px;}
+  .updated{color:#cdd8f0;font-size:12px;opacity:.85;margin-top:8px;}
+  .langtog{display:flex;background:rgba(0,0,0,.22);border:1px solid rgba(255,255,255,.25);
+           border-radius:999px;overflow:hidden;font-size:13px;font-weight:600;}
+  .langtog button{background:none;border:none;color:#fff;padding:7px 14px;cursor:pointer;opacity:.6;}
+  .langtog button.on{background:rgba(255,255,255,.92);color:#16213a;opacity:1;}
+  /* highlights */
+  .hl{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin:-26px 0 8px;position:relative;z-index:2;}
+  .hlcard{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;box-shadow:0 8px 28px rgba(0,0,0,.28);}
+  .hlcard .lbl{color:var(--mut);font-size:11.5px;text-transform:uppercase;letter-spacing:.6px;}
+  .hlcard .val{display:flex;align-items:center;gap:9px;margin-top:8px;font-size:19px;font-weight:700;}
+  .hlcard .sub{color:var(--mut);font-size:12.5px;margin-top:3px;}
+  /* sections */
+  main{padding:18px 0 70px;}
+  h2{font-size:17px;margin:30px 0 13px;display:flex;align-items:center;gap:9px;}
+  h2 .bar{width:4px;height:18px;border-radius:3px;background:var(--grad);}
+  .note{color:var(--mut);font-size:12.5px;font-weight:400;}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:26px;}
+  @media (max-width:760px){.cols{grid-template-columns:1fr;}}
+  table{width:100%;border-collapse:collapse;font-size:14px;}
+  td,th{text-align:left;padding:7px 9px;border-bottom:1px solid var(--line);}
+  th{color:var(--mut);font-weight:500;font-size:11.5px;text-transform:uppercase;letter-spacing:.4px;}
+  tr:hover td{background:rgba(90,162,255,.05);}
+  .flag{width:22px;height:15px;border-radius:2px;object-fit:cover;vertical-align:middle;
+        box-shadow:0 0 0 1px rgba(255,255,255,.12);flex:none;}
+  .tcell{display:flex;align-items:center;gap:8px;}
+  .pct{font-variant-numeric:tabular-nums;}
+  .pbar{background:var(--line);border-radius:5px;height:9px;min-width:70px;overflow:hidden;}
+  .pbar>i{display:block;height:100%;background:linear-gradient(90deg,var(--acc2),var(--acc));border-radius:5px;}
+  .rank{color:var(--mut);width:18px;display:inline-block;font-variant-numeric:tabular-nums;}
+  .up{color:var(--acc);} .down{color:var(--red);} .flat{color:var(--mut);}
+  /* match cards */
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:13px;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 15px;transition:.15s;}
+  .card:hover{border-color:#3a4straight;transform:translateY(-2px);box-shadow:0 10px 26px rgba(0,0,0,.3);border-color:#3c4straight;}
+  .mtop{display:flex;justify-content:space-between;font-size:11.5px;color:var(--mut);margin-bottom:10px;}
+  .vs{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:11px;}
+  .side{display:flex;align-items:center;gap:8px;font-weight:650;font-size:14.5px;min-width:0;}
+  .side.away{flex-direction:row-reverse;text-align:right;}
+  .side .flag{width:26px;height:18px;}
+  .side span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .vsx{color:var(--mut);font-size:11px;flex:none;}
+  .bar3{display:flex;height:26px;border-radius:7px;overflow:hidden;font-size:11px;font-weight:700;}
+  .bar3 span{display:flex;align-items:center;justify-content:center;color:#06101e;min-width:0;}
+  .b-h{background:linear-gradient(180deg,#7bb6ff,#5aa2ff);}
+  .b-d{background:linear-gradient(180deg,#828ea3,#6b7688);color:#fff !important;}
+  .b-a{background:linear-gradient(180deg,#52e08c,#37d67a);}
+  .meta{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;}
+  .chip{background:var(--card2);border:1px solid var(--line);border-radius:7px;padding:3px 8px;font-size:11.5px;color:var(--mut);}
+  .chip b{color:var(--txt);font-weight:600;}
+  .legend{display:flex;gap:16px;color:var(--mut);font-size:12px;margin:4px 0 2px;flex-wrap:wrap;}
+  .dot{display:inline-block;width:10px;height:10px;border-radius:3px;vertical-align:middle;margin-right:5px;}
+  footer{color:var(--mut);font-size:12px;margin-top:34px;border-top:1px solid var(--line);padding-top:16px;}
+  .err{color:var(--mut);padding:18px;}
 </style>
 </head>
 <body>
-<header>
-  <h1>⚽ World Cup 2026 — Predictions</h1>
-  <div class="sub">Market-anchored ensemble · Dixon-Coles + ELO · Monte Carlo tournament sim.
-    <span id="updated"></span></div>
-</header>
-<main>
-  <div class="cols">
+<div class="hero"><div class="wrap">
+  <div class="toprow">
     <div>
-      <h2>Title probability</h2>
-      <table id="title"></table>
+      <h1 id="t-title">⚽ World Cup 2026 — Predictions</h1>
+      <div class="tagline" id="t-tag"></div>
+      <div class="updated" id="updated"></div>
     </div>
-    <div>
-      <h2>Reach knockout (R32)</h2>
-      <table id="r32"></table>
+    <div class="langtog">
+      <button id="lang-en" onclick="setLang('en')">EN</button>
+      <button id="lang-zh" onclick="setLang('zh')">中文</button>
     </div>
   </div>
-  <h2>Title: model vs market <span class="tag" id="mktinfo"></span></h2>
-  <table id="cmp"></table>
+</div></div>
 
-  <h2>Match predictions <span class="tag" id="mcount"></span></h2>
-  <div class="grid" id="matches"></div>
-  <p class="sub" style="margin-top:30px">
-    Probabilities are model estimates, not betting advice. Open data; see the repo README.
-  </p>
-</main>
+<div class="wrap">
+  <div class="hl" id="highlights"></div>
+  <main>
+    <div class="cols">
+      <div>
+        <h2><span class="bar"></span><span id="t-title-prob"></span></h2>
+        <table id="title"></table>
+      </div>
+      <div>
+        <h2><span class="bar"></span><span id="t-r32"></span></h2>
+        <table id="r32"></table>
+      </div>
+    </div>
+
+    <h2><span class="bar"></span><span id="t-cmp"></span> <span class="note" id="t-cmp-note"></span></h2>
+    <table id="cmp"></table>
+
+    <h2><span class="bar"></span><span id="t-matches"></span> <span class="note" id="mcount"></span></h2>
+    <div class="legend">
+      <span><i class="dot b-h"></i><span id="t-leg-h"></span></span>
+      <span><i class="dot b-d"></i><span id="t-leg-d"></span></span>
+      <span><i class="dot b-a"></i><span id="t-leg-a"></span></span>
+    </div>
+    <div class="grid" id="matches"></div>
+
+    <footer id="t-foot"></footer>
+  </main>
+</div>
+
 <script>
-function pct(x){ return (x*100).toFixed(1)+'%'; }
+/* ---------- i18n ---------- */
+const I18N = {
+  en:{ title:"⚽ World Cup 2026 — Predictions",
+    tag:"Market-anchored ensemble — Dixon-Coles + ELO statistical model, blended with the betting market, plus a Monte Carlo simulation of all 104 matches.",
+    updated:u=>"Updated "+u, titleProb:"Title probability", r32:"Reach knockout (R32)",
+    cmp:"Title — model vs market", cmpNote:"Polymarket de-vigged · green = model sees more value than the market",
+    matches:"Match predictions", mcount:n=>n+" fixtures",
+    legH:"Home win", legD:"Draw", legA:"Away win",
+    over:"O2.5", btts:"BTTS", win:"win", draw:"draw",
+    hlModelFav:"Model favourite", hlMktFav:"Market favourite",
+    hlValue:"Biggest value vs market", hlFade:"Most overpriced by market",
+    foot:"Probabilities are model estimates for information only — not betting advice. Built on open data. Source on GitHub.",
+    model:"Model", market:"Market", edge:"Edge", team:"Team", prob:"Prob" },
+  zh:{ title:"⚽ 2026 世界杯 — 预测",
+    tag:"市场锚定集成模型 —— Dixon-Coles 比分模型 + ELO 实力评分,与博彩市场融合,并用蒙特卡洛模拟全部 104 场比赛。",
+    updated:u=>"更新于 "+u, titleProb:"夺冠概率", r32:"晋级淘汰赛(32强)概率",
+    cmp:"夺冠 — 模型 vs 市场", cmpNote:"Polymarket 去抽水 · 绿色=模型比市场更看好",
+    matches:"逐场预测", mcount:n=>n+" 场",
+    legH:"主队胜", legD:"平局", legA:"客队胜",
+    over:"大2.5", btts:"双方进球", win:"胜", draw:"平",
+    hlModelFav:"模型最看好", hlMktFav:"市场最看好",
+    hlValue:"相对市场最具价值", hlFade:"市场最高估",
+    foot:"以上为模型估算,仅供参考,非投注建议。基于公开数据构建,源码见 GitHub。",
+    model:"模型", market:"市场", edge:"差值", team:"球队", prob:"概率" }
+};
+/* ---------- team metadata: English name -> {iso, zh} ---------- */
+const TEAM = {
+  "Algeria":["dz","阿尔及利亚"],"Argentina":["ar","阿根廷"],"Australia":["au","澳大利亚"],
+  "Austria":["at","奥地利"],"Belgium":["be","比利时"],"Bosnia and Herzegovina":["ba","波黑"],
+  "Brazil":["br","巴西"],"Canada":["ca","加拿大"],"Cape Verde":["cv","佛得角"],
+  "Colombia":["co","哥伦比亚"],"Croatia":["hr","克罗地亚"],"Curaçao":["cw","库拉索"],
+  "Czech Republic":["cz","捷克"],"DR Congo":["cd","刚果(金)"],"Ecuador":["ec","厄瓜多尔"],
+  "Egypt":["eg","埃及"],"England":["gb-eng","英格兰"],"France":["fr","法国"],
+  "Germany":["de","德国"],"Ghana":["gh","加纳"],"Haiti":["ht","海地"],"Iran":["ir","伊朗"],
+  "Iraq":["iq","伊拉克"],"Ivory Coast":["ci","科特迪瓦"],"Italy":["it","意大利"],
+  "Japan":["jp","日本"],"Jordan":["jo","约旦"],"Mexico":["mx","墨西哥"],"Morocco":["ma","摩洛哥"],
+  "Netherlands":["nl","荷兰"],"New Zealand":["nz","新西兰"],"Norway":["no","挪威"],
+  "Panama":["pa","巴拿马"],"Paraguay":["py","巴拉圭"],"Peru":["pe","秘鲁"],
+  "Portugal":["pt","葡萄牙"],"Qatar":["qa","卡塔尔"],"Saudi Arabia":["sa","沙特阿拉伯"],
+  "Scotland":["gb-sct","苏格兰"],"Senegal":["sn","塞内加尔"],"South Africa":["za","南非"],
+  "South Korea":["kr","韩国"],"Spain":["es","西班牙"],"Sweden":["se","瑞典"],
+  "Switzerland":["ch","瑞士"],"Tunisia":["tn","突尼斯"],"Turkey":["tr","土耳其"],
+  "United States":["us","美国"],"Uruguay":["uy","乌拉圭"],"Uzbekistan":["uz","乌兹别克斯坦"]
+};
+let LANG = localStorage.getItem("wc_lang") || "en";
+let DATA = null;
+function L(){ return I18N[LANG]; }
+function pct(x){ return (x*100).toFixed(1)+"%"; }
+function tName(en){ const m=TEAM[en]; return (LANG==="zh"&&m)?m[1]:en; }
+function flag(en){ const m=TEAM[en]; return m?`<img class="flag" loading="lazy" src="https://flagcdn.com/w40/${m[0]}.png" alt="">`:""; }
+
+function setLang(l){ LANG=l; localStorage.setItem("wc_lang",l); render(); }
+
 function probTable(el, obj, limit){
-  const rows = Object.entries(obj).slice(0, limit);
-  const max = rows.length ? rows[0][1] : 1;
-  el.innerHTML = '<tr><th>Team</th><th>Prob</th><th></th></tr>' + rows.map(([t,p])=>
-    `<tr><td>${t}</td><td class="pct">${pct(p)}</td>
-     <td style="width:45%"><div class="pbar"><i style="width:${(p/max*100).toFixed(0)}%"></i></div></td></tr>`).join('');
+  const rows=Object.entries(obj||{}).slice(0,limit);
+  const max=rows.length?rows[0][1]:1;
+  el.innerHTML="<tr><th>#</th><th>"+L().team+"</th><th>"+L().prob+"</th><th></th></tr>"+
+    rows.map(([t,p],i)=>`<tr><td><span class="rank">${i+1}</span></td>
+      <td><span class="tcell">${flag(t)}${tName(t)}</span></td>
+      <td class="pct">${pct(p)}</td>
+      <td style="width:42%"><div class="pbar"><i style="width:${(p/max*100).toFixed(0)}%"></i></div></td></tr>`).join("");
+}
+function cmpTable(el, rows){
+  if(!rows||!rows.length){ el.innerHTML='<tr><td class="err">—</td></tr>'; return; }
+  el.innerHTML="<tr><th>"+L().team+"</th><th>"+L().model+"</th><th>"+L().market+"</th><th>"+L().edge+"</th></tr>"+
+    rows.slice(0,18).map(r=>{
+      const cls=r.edge>0.02?"up":(r.edge<-0.02?"down":"flat"), s=r.edge>0?"+":"";
+      return `<tr><td><span class="tcell">${flag(r.team)}${tName(r.team)}</span></td>
+        <td class="pct">${pct(r.model)}</td><td class="pct">${pct(r.market)}</td>
+        <td class="pct ${cls}">${s}${(r.edge*100).toFixed(1)}%</td></tr>`;
+    }).join("");
 }
 function matchCard(m){
-  if(m.error) return '';
-  const h=(m.p_home*100), d=(m.p_draw*100), a=(m.p_away*100);
-  const top = (m.top_scorelines||[]).slice(0,3).map(s=>`${s.score} (${(s.p*100).toFixed(0)}%)`).join(' · ');
+  if(m.error) return "";
+  const h=m.p_home*100,d=m.p_draw*100,a=m.p_away*100;
+  const top=(m.top_scorelines||[]).slice(0,1).map(s=>`${s.score} (${(s.p*100).toFixed(0)}%)`).join("");
+  const lab=v=>v>=11?v.toFixed(0):"";
   return `<div class="card">
-    <div class="match-top"><span>${m.date||''}</span><span>${m.city||''}</span></div>
-    <div class="teams">${m.home} <span style="color:var(--mut)">vs</span> ${m.away}</div>
-    <div class="bar">
-      <span class="h" style="width:${h}%">${h.toFixed(0)}</span>
-      <span class="d" style="width:${d}%">${d.toFixed(0)}</span>
-      <span class="a" style="width:${a}%">${a.toFixed(0)}</span>
+    <div class="mtop"><span>${m.date||""}</span><span>${m.city||""}</span></div>
+    <div class="vs">
+      <span class="side">${flag(m.home)}<span>${tName(m.home)}</span></span>
+      <span class="vsx">VS</span>
+      <span class="side away">${flag(m.away)}<span>${tName(m.away)}</span></span>
+    </div>
+    <div class="bar3">
+      <span class="b-h" style="width:${h}%">${lab(h)}</span>
+      <span class="b-d" style="width:${d}%">${lab(d)}</span>
+      <span class="b-a" style="width:${a}%">${lab(a)}</span>
     </div>
     <div class="meta">
-      <span>O2.5 ${pct(m.p_over_2_5)}</span>
-      <span>BTTS ${pct(m.p_btts)}</span>
-      <span>${top}</span>
+      <span class="chip">${L().over} <b>${pct(m.p_over_2_5)}</b></span>
+      <span class="chip">${L().btts} <b>${pct(m.p_btts)}</b></span>
+      ${top?`<span class="chip"><b>${top}</b></span>`:""}
     </div></div>`;
 }
-function cmpTable(el, rows, info){
-  if(!rows || !rows.length){ el.innerHTML='<tr><td class="sub">No market data.</td></tr>'; return; }
-  info.textContent = '· Polymarket de-vigged · + = model higher than market';
-  el.innerHTML = '<tr><th>Team</th><th>Model</th><th>Market</th><th>Edge</th></tr>' +
-    rows.slice(0,18).map(r=>{
-      const e=r.edge, col = e>0.02?'var(--acc)':(e<-0.02?'#f85149':'var(--mut)');
-      const sign = e>0?'+':'';
-      return `<tr><td>${r.team}</td><td class="pct">${pct(r.model)}</td>
-        <td class="pct">${pct(r.market)}</td>
-        <td class="pct" style="color:${col}">${sign}${(e*100).toFixed(1)}%</td></tr>`;
-    }).join('');
+function highlights(d){
+  const sim=d.simulation||{}, tp=sim.title_probability||{}, mk=(d.market_title||{}).implied_title_prob||{};
+  const cmp=d.title_comparison||[];
+  const el=document.getElementById("highlights");
+  const card=(lbl,team,sub)=>`<div class="hlcard"><div class="lbl">${lbl}</div>
+    <div class="val">${flag(team)}${tName(team)}</div><div class="sub">${sub}</div></div>`;
+  const mf=Object.entries(tp)[0], kf=Object.entries(mk)[0];
+  const val=[...cmp].sort((a,b)=>b.edge-a.edge)[0];
+  const fade=[...cmp].sort((a,b)=>a.edge-b.edge)[0];
+  let html="";
+  if(mf) html+=card(L().hlModelFav, mf[0], pct(mf[1]));
+  if(kf) html+=card(L().hlMktFav, kf[0], pct(kf[1]));
+  if(val) html+=card(L().hlValue, val.team, `${L().model} ${pct(val.model)} · ${L().market} ${pct(val.market)} · <span class="up">+${(val.edge*100).toFixed(1)}%</span>`);
+  if(fade) html+=card(L().hlFade, fade.team, `${L().model} ${pct(fade.model)} · ${L().market} ${pct(fade.market)} · <span class="down">${(fade.edge*100).toFixed(1)}%</span>`);
+  el.innerHTML=html;
 }
-fetch('./data.json').then(r=>r.json()).then(d=>{
-  document.getElementById('updated').textContent = '· updated '+(d.generated_at||'');
-  const sim = d.simulation||{};
-  probTable(document.getElementById('title'), sim.title_probability||{}, 16);
-  probTable(document.getElementById('r32'), sim.reach_knockout_R32||{}, 16);
-  cmpTable(document.getElementById('cmp'), d.title_comparison, document.getElementById('mktinfo'));
-  const ms = (d.predictions||[]).filter(m=>!m.error);
-  document.getElementById('mcount').textContent = ms.length+' fixtures';
-  document.getElementById('matches').innerHTML = ms.map(matchCard).join('');
-}).catch(e=>{
-  document.getElementById('matches').innerHTML='<p class="sub">No data.json yet — run: predict --all --simulate then publish.</p>';
-});
+function render(){
+  document.getElementById("lang-en").className=LANG==="en"?"on":"";
+  document.getElementById("lang-zh").className=LANG==="zh"?"on":"";
+  document.documentElement.lang=LANG;
+  const t=L();
+  document.getElementById("t-title").textContent=t.title;
+  document.getElementById("t-tag").textContent=t.tag;
+  document.getElementById("t-title-prob").textContent=t.titleProb;
+  document.getElementById("t-r32").textContent=t.r32;
+  document.getElementById("t-cmp").textContent=t.cmp;
+  document.getElementById("t-cmp-note").textContent="· "+t.cmpNote;
+  document.getElementById("t-matches").textContent=t.matches;
+  document.getElementById("t-leg-h").textContent=t.legH;
+  document.getElementById("t-leg-d").textContent=t.legD;
+  document.getElementById("t-leg-a").textContent=t.legA;
+  document.getElementById("t-foot").innerHTML=t.foot+' · <a href="https://github.com/rrclaw/worldcup-predictor" style="color:var(--acc2)">GitHub</a>';
+  if(!DATA){ document.getElementById("matches").innerHTML='<p class="err">No data yet.</p>'; return; }
+  document.getElementById("updated").textContent=t.updated(DATA.generated_at||"");
+  const sim=DATA.simulation||{};
+  highlights(DATA);
+  probTable(document.getElementById("title"), sim.title_probability, 16);
+  probTable(document.getElementById("r32"), sim.reach_knockout_R32, 16);
+  cmpTable(document.getElementById("cmp"), DATA.title_comparison);
+  const ms=(DATA.predictions||[]).filter(m=>!m.error);
+  document.getElementById("mcount").textContent="· "+t.mcount(ms.length);
+  document.getElementById("matches").innerHTML=ms.map(matchCard).join("");
+}
+fetch("./data.json").then(r=>r.json()).then(d=>{DATA=d;render();}).catch(()=>render());
+render();
 </script>
 </body>
 </html>
