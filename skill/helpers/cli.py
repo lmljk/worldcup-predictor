@@ -184,7 +184,16 @@ def _cmd_portraits(args):
         top = sorted(goal_shares(ps), key=lambda x: -x[2])[: args.topk]
         names += [n for n, _p, _s in top]
     names = sorted(set(names))
-    print(f"fetching portraits for {len(names)} players…")
+
+    pdir = paths.SITE / "portraits"
+    pdir.mkdir(exist_ok=True)
+    pj = paths.DATA / "portraits.json"
+    portraits = json.loads(pj.read_text()) if pj.exists() else {}
+    # incremental: keep what's already on disk, only fetch the missing ones
+    portraits = {n: f for n, f in portraits.items() if (pdir / f).exists()}
+    todo = [n for n in names if not (pdir / (_slug(n) + ".jpg")).exists()]
+    print(f"{len(names)} targets · {len(names) - len(todo)} already have photos · fetching {len(todo)}…")
+    names = todo
 
     UA = {"User-Agent": "worldcup-predictor/0.1"}
     api = "https://en.wikipedia.org/w/api.php"
@@ -218,20 +227,19 @@ def _cmd_portraits(args):
             if u:
                 url_map[b] = u
 
-    pdir = paths.SITE / "portraits"
-    pdir.mkdir(exist_ok=True)
-    portraits = {}
+    added = 0
     for name, u in url_map.items():
         fn = _slug(name) + ".jpg"
         try:
-            img = requests.get(u, headers=UA, timeout=30)
+            img = requests.get(u, headers=UA, timeout=15)
             if img.status_code == 200 and img.content:
                 (pdir / fn).write_bytes(img.content)
                 portraits[name] = fn
+                added += 1
         except requests.RequestException:
             continue
-    (paths.DATA / "portraits.json").write_text(json.dumps(portraits, ensure_ascii=False))
-    print(f"downloaded {len(portraits)} portraits -> {pdir}")
+    pj.write_text(json.dumps(portraits, ensure_ascii=False))
+    print(f"added {added} portraits · total {len(portraits)} -> {pdir}")
 
 
 def _cmd_players(args):
