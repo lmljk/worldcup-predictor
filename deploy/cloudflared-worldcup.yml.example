@@ -1,0 +1,8 @@
+# Add this hostname rule to your existing cloudflared tunnel ingress (above the 404 catch-all).
+# Then: cloudflared tunnel route dns <TUNNEL_NAME> worldcup.polyalpha.cn
+
+ingress:
+  - hostname: worldcup.polyalpha.cn
+    service: http://127.0.0.1:8780   # local http.server serving worldcup/site
+  # ... your other existing rules ...
+  - service: http_status:404

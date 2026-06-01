@@ -1,0 +1,24 @@
+{
+  "window": [
+    "2018-01-01",
+    "2023-12-31"
+  ],
+  "majors_only": true,
+  "xi": 0.0019,
+  "refit_days": 90,
+  "skipped": 0,
+  "dixon_coles": {
+    "mean_rps": 0.19198,
+    "mean_brier": 0.19274,
+    "mean_log_loss": 0.97054,
+    "n": 388,
+    "top_pick_accuracy": 0.5
+  },
+  "elo_baseline": {
+    "mean_rps": 0.18992,
+    "mean_brier": 0.18787,
+    "mean_log_loss": 0.95316,
+    "n": 388,
+    "top_pick_accuracy": 0.5747
+  }
+}
