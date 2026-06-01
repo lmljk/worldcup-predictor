@@ -25,3 +25,6 @@ site/data.json
 
 # internal project guide — not for public repo
 CLAUDE.md
+
+# machine-specific real infra (only the .example belongs in the public repo)
+deploy/cloudflared-worldcup.yml
