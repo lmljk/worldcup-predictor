@@ -78,6 +78,24 @@ def _predict_one(model, row) -> dict:
     return mp
 
 
+def _cmd_market(args):
+    """Print our Monte Carlo title odds next to Polymarket's de-vigged market, with edge."""
+    rep = paths.report_dir(args.date)
+    sim_f = rep / "simulation.json"
+    model_title = json.loads(sim_f.read_text()).get("title_probability", {}) if sim_f.exists() else {}
+    mk = data_loader.fetch_polymarket_winner(team_filter=set(model_title) or None)
+    if "error" in mk:
+        print(f"polymarket fetch failed: {mk['error']}", file=sys.stderr)
+        sys.exit(1)
+    market = mk["implied_title_prob"]
+    print(f"Polymarket 'World Cup Winner' — overround {mk['overround']}, {mk['n_teams']} teams\n")
+    print(f"{'Team':<20}{'Model':>8}{'Market':>8}{'Edge':>8}")
+    teams = sorted(set(market) | set(model_title), key=lambda t: -market.get(t, 0))
+    for t in teams[:20]:
+        m, k = model_title.get(t, 0), market.get(t, 0)
+        print(f"{t:<20}{m*100:7.1f}%{k*100:7.1f}%{(m-k)*100:+7.1f}%")
+
+
 def _cmd_review(args):
     """Daily live loop: refresh data, score completed matches vs our prior predictions,
     re-predict upcoming fixtures, re-simulate, and republish the dashboard."""
@@ -141,15 +159,33 @@ def _cmd_publish(args):
     if not preds_f.exists():
         print(f"no predictions at {preds_f} — run `predict --all --simulate` first", file=sys.stderr)
         sys.exit(1)
+    sim = json.loads(sim_f.read_text()) if sim_f.exists() else {}
     data = {
         "generated_at": _dt.datetime.now().isoformat(timespec="minutes"),
         "report_date": rep.name,
         "predictions": json.loads(preds_f.read_text()),
-        "simulation": json.loads(sim_f.read_text()) if sim_f.exists() else {},
+        "simulation": sim,
     }
+    # Market anchor: Polymarket title odds vs our Monte Carlo (model-vs-market + edge).
+    model_title = sim.get("title_probability", {})
+    if model_title:
+        teams = set(model_title)
+        mk = data_loader.fetch_polymarket_winner(team_filter=teams)
+        if "implied_title_prob" in mk:
+            market = mk["implied_title_prob"]
+            comparison = sorted(
+                ({"team": t, "model": round(model_title.get(t, 0), 4),
+                  "market": round(market.get(t, 0), 4),
+                  "edge": round(model_title.get(t, 0) - market.get(t, 0), 4)}
+                 for t in teams | set(market)),
+                key=lambda x: -x["market"],
+            )
+            data["market_title"] = mk
+            data["title_comparison"] = comparison
     (paths.SITE / "data.json").write_text(json.dumps(data, ensure_ascii=False))
     print(f"published -> {paths.SITE / 'data.json'} "
-          f"({len(data['predictions'])} fixtures, sim={'yes' if sim_f.exists() else 'no'})")
+          f"({len(data['predictions'])} fixtures, sim={'yes' if sim_f.exists() else 'no'}, "
+          f"market={'yes' if data.get('market_title') else 'no'})")
 
 
 def _cmd_backtest(args):
@@ -188,6 +224,10 @@ def main(argv=None):
     pr = sub.add_parser("review")
     pr.add_argument("--sims", type=int, default=50000)
     pr.set_defaults(func=_cmd_review)
+
+    pm = sub.add_parser("market")
+    pm.add_argument("--date", default=None)
+    pm.set_defaults(func=_cmd_market)
 
     pb = sub.add_parser("backtest")
     pb.add_argument("--start", default="2010-01-01")

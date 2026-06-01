@@ -51,6 +51,9 @@
       <table id="r32"></table>
     </div>
   </div>
+  <h2>Title: model vs market <span class="tag" id="mktinfo"></span></h2>
+  <table id="cmp"></table>
+
   <h2>Match predictions <span class="tag" id="mcount"></span></h2>
   <div class="grid" id="matches"></div>
   <p class="sub" style="margin-top:30px">
@@ -84,11 +87,24 @@ function matchCard(m){
       <span>${top}</span>
     </div></div>`;
 }
+function cmpTable(el, rows, info){
+  if(!rows || !rows.length){ el.innerHTML='<tr><td class="sub">No market data.</td></tr>'; return; }
+  info.textContent = '· Polymarket de-vigged · + = model higher than market';
+  el.innerHTML = '<tr><th>Team</th><th>Model</th><th>Market</th><th>Edge</th></tr>' +
+    rows.slice(0,18).map(r=>{
+      const e=r.edge, col = e>0.02?'var(--acc)':(e<-0.02?'#f85149':'var(--mut)');
+      const sign = e>0?'+':'';
+      return `<tr><td>${r.team}</td><td class="pct">${pct(r.model)}</td>
+        <td class="pct">${pct(r.market)}</td>
+        <td class="pct" style="color:${col}">${sign}${(e*100).toFixed(1)}%</td></tr>`;
+    }).join('');
+}
 fetch('./data.json').then(r=>r.json()).then(d=>{
   document.getElementById('updated').textContent = '· updated '+(d.generated_at||'');
   const sim = d.simulation||{};
   probTable(document.getElementById('title'), sim.title_probability||{}, 16);
   probTable(document.getElementById('r32'), sim.reach_knockout_R32||{}, 16);
+  cmpTable(document.getElementById('cmp'), d.title_comparison, document.getElementById('mktinfo'));
   const ms = (d.predictions||[]).filter(m=>!m.error);
   document.getElementById('mcount').textContent = ms.length+' fixtures';
   document.getElementById('matches').innerHTML = ms.map(matchCard).join('');

@@ -57,6 +57,9 @@ PYTHONPATH=. $PY -m skill.helpers.cli predict --match <fixture_id>
 # 全部场次 + 蒙特卡洛晋级树
 PYTHONPATH=. $PY -m skill.helpers.cli predict --all --simulate
 
+# 模型 vs 市场(Polymarket 去抽水夺冠赔率 + edge)
+PYTHONPATH=. $PY -m skill.helpers.cli market
+
 # 回测(walk-forward, 防 lookahead)
 PYTHONPATH=. $PY -m skill.helpers.cli backtest --start 2010-01-01 --end 2026-05-31
 

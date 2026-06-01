@@ -73,6 +73,69 @@ def fetch_weather(lat: float, lon: float, when: str) -> dict[str, Any]:
         return {"error": str(e)}
 
 
+# Polymarket uses slightly different country labels than the martj42 dataset.
+PM_NAME_ALIASES = {
+    "Bosnia-Herzegovina": "Bosnia and Herzegovina",
+    "USA": "United States",
+    "Turkiye": "Turkey",
+    "Türkiye": "Turkey",
+    "Congo DR": "DR Congo",
+    "Czechia": "Czech Republic",
+    "Cabo Verde": "Cape Verde",
+    "Ivory Coast": "Ivory Coast",
+    "Côte d'Ivoire": "Ivory Coast",
+}
+
+
+def _canon(team: str) -> str:
+    return PM_NAME_ALIASES.get(team, team)
+
+
+def fetch_polymarket_winner(team_filter: set[str] | None = None) -> dict[str, Any]:
+    """Polymarket 'World Cup Winner' market → de-vigged implied title probabilities.
+
+    Each sub-market is 'Will <team> win the 2026 FIFA World Cup?' (Yes price ≈ prob).
+    We map names to our dataset, keep only real WC teams, and normalise so the
+    de-vigged probabilities sum to 1 (removes the ~3% market overround).
+    """
+    import re
+
+    try:
+        ev = requests.get("https://gamma-api.polymarket.com/events/slug/world-cup-winner",
+                          headers=UA, timeout=30)
+        if ev.status_code != 200:
+            ev = requests.get("https://gamma-api.polymarket.com/events/30615", headers=UA, timeout=30)
+        ev.raise_for_status()
+        data = ev.json()
+    except requests.RequestException as e:
+        return {"error": str(e)}
+
+    raw = {}
+    for m in data.get("markets", []):
+        mt = re.match(r"Will (.+?) win the 2026 FIFA World Cup\?", m.get("question", ""))
+        pr = m.get("outcomePrices")
+        if not mt or not pr:
+            continue
+        try:
+            yes = float(json.loads(pr)[0])
+        except (ValueError, json.JSONDecodeError, IndexError):
+            continue
+        team = _canon(mt.group(1))
+        if team_filter and team not in team_filter:
+            continue
+        raw[team] = yes
+
+    overround = sum(raw.values())
+    devig = {t: round(p / overround, 5) for t, p in raw.items()} if overround else {}
+    return {
+        "source": "polymarket:world-cup-winner",
+        "fetched_at": datetime.now().isoformat(timespec="minutes"),
+        "overround": round(overround, 4),
+        "n_teams": len(devig),
+        "implied_title_prob": dict(sorted(devig.items(), key=lambda x: -x[1])),
+    }
+
+
 def fetch_polymarket(query: str = "World Cup", limit: int = 100) -> list[dict[str, Any]]:
     """Polymarket Gamma markets matching a query (public, no key)."""
     try:

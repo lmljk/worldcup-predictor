@@ -28,8 +28,30 @@ AFCON / Asian Cup). Metrics: mean RPS / Brier / log-loss; lower is better. Top-p
 ensemble** is the right call. Next: blend ELO (match-result strength) + DC (scoreline) + market
 de-vig, then calibrate, and re-measure against both baselines.
 
+## Run 2 — Polymarket title market anchor (free, live)
+
+Source: Polymarket "World Cup Winner" market (60 sub-markets, Yes-price = implied title prob),
+de-vigged by normalising (overround ~3.1% — prediction markets are tight). `cli market` /
+dashboard "model vs market" panel. Biggest model-vs-market divergences (model − market):
+
+| Team | Model | Market | Edge | Read |
+|------|-------|--------|------|------|
+| France | 7.0% | 16.5% | **−9.5%** | rating models underrate France's squad talent the market prices in |
+| Argentina | 16.2% | 8.7% | **+7.5%** | our model overrates the holders / top-ELO side |
+| Colombia | 4.8% | 1.7% | +3.1% | model bullish |
+| Portugal | 6.6% | 9.1% | −2.5% | market bullish |
+
+**Read:** the France gap is the textbook reason for market-anchoring — a pure ELO/DC model
+can't see roster quality, the market can. Blending pulls our estimate toward market and the
+edge column flags where to investigate (injuries, draw difficulty, squad news).
+
 ## Open items
-- Add a **raw-market baseline** (needs historical odds → The Odds API Business, or free scrape).
-  This is the real bar; if the ensemble can't beat de-vigged market, it has no edge.
+- **Historical raw-market 1X2 baseline** for internationals isn't available free at scale
+  (The Odds API soccer/historical is paid; football-data.co.uk is club leagues only). Two
+  honest paths: (a) buy The Odds API Business for the historical archive, or (b) **forward
+  scoring** — the `review` loop records predicted-vs-actual once matches resolve, so during the
+  tournament we get an empirical model-vs-market RPS comparison for free. Use (b) by default.
+- **Per-match 1X2 market anchor**: those Polymarket markets aren't up yet (~9 days out). When
+  they appear, wire `fetch_polymarket` match markets → de-vig → blend into per-match predict.
 - Per-factor ablation (altitude/rest/travel/injury) once context layer is wired.
 - Calibration curves + isotonic fit.
