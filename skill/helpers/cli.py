@@ -16,6 +16,9 @@ import pandas as pd
 
 from . import data_loader, paths
 
+# Weight of the squad-talent prior on attack/defence (log-space nudge). Modest by design.
+TALENT_WEIGHT = 0.10
+
 
 def _cmd_fetch(args):
     summary = data_loader.fetch_all()
@@ -30,6 +33,17 @@ def _cmd_predict(args):
     as_of = pd.Timestamp.now().normalize()
     model = dc.fit(results, as_of=as_of)
     squads = data_loader.fetch_squads()
+
+    # squad-talent prior (clubelo): nudge strength toward roster quality the
+    # results-based model misses (e.g. France). Transparent, surfaced as a factor.
+    talent = {}
+    try:
+        from ..model import talent as talentmod
+        talent = talentmod.squad_talent(squads, data_loader.fetch_club_elo())
+        model.attack, model.defence = talentmod.adjusted_strength(
+            model.attack, model.defence, talent, weight=TALENT_WEIGHT)
+    except Exception as e:  # noqa: BLE001 — talent is an optional enhancement
+        print(f"[talent skipped] {e}", file=sys.stderr)
 
     if args.match:
         row = fixtures[fixtures["fixture_id"] == args.match]
@@ -69,16 +83,17 @@ def _cmd_predict(args):
                 print(f"  {name:<34} {p*100:5.1f}%")
 
     # detail data for the dashboard's team/player search views
-    tf, sq = _detail_payload(model, results, fixtures, squads, sim)
+    tf, sq = _detail_payload(model, results, fixtures, squads, sim, talent)
     (paths.report_dir() / "team_factors.json").write_text(json.dumps(tf, ensure_ascii=False))
     (paths.report_dir() / "squads_shares.json").write_text(json.dumps(sq, ensure_ascii=False))
 
 
-def _detail_payload(model, results, fixtures, squads, sim):
+def _detail_payload(model, results, fixtures, squads, sim, talent=None):
     """Per-team model factors + per-player goal shares — powers the search detail views."""
     from ..model.elo import compute_elo_history
     from ..model.players import goal_shares, player_rate
 
+    talent = talent or {}
     _, elo = compute_elo_history(results)
     teams = sorted(set(fixtures["home_team"]) | set(fixtures["away_team"]))
     sim = sim or {}
@@ -87,10 +102,12 @@ def _detail_payload(model, results, fixtures, squads, sim):
     hosts = {"United States", "Canada", "Mexico"}
     tf = {}
     for t in teams:
+        tl = talent.get(t, {})
         tf[t] = {
             "elo": round(float(elo.get(t, 1500)), 0),
             "attack": round(model.attack.get(t, 0.0), 3),
             "defence": round(model.defence.get(t, 0.0), 3),
+            "talent": tl.get("talent"), "talent_z": tl.get("talent_z"),
             "host": t in hosts,
             "title": tp.get(t), "advance": adv.get(t), "r32": r32.get(t), "final": fin.get(t),
         }

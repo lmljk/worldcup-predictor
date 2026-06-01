@@ -438,6 +438,7 @@ function openTeam(team){
     <ul class="factors">
       <li><b>${t.sElo}:</b> ${tf.elo} · ${t.rankN(rankOf(tf.elo,"elo"),N)} — ${LANG==='zh'?'基于全部国际比赛历史的实力评分(预测的主因子)':'strength from full international match history (the dominant input)'}</li>
       <li><b>${t.sAtk}/${t.sDef}:</b> ${tf.attack} / ${tf.defence} — ${LANG==='zh'?'Dixon-Coles 进攻/防守系数(近 8 年,时间加权)':'Dixon-Coles attack/defence (last 8 yrs, time-weighted)'}</li>
+      ${tf.talent!=null?`<li><b>${LANG==='zh'?'阵容天赋':'Squad talent'}:</b> ${tf.talent} · ${t.rankN(rankOf(tf.talent,"talent"),Object.keys(DATA.team_factors).length)} — ${LANG==='zh'?'球员所在俱乐部 Elo 均值(clubelo,身价代理,修正纯战绩低估)':'mean club Elo of the squad (clubelo, a market-value proxy that corrects results-only bias)'}</li>`:""}
       ${tf.host?`<li><b>${LANG==='zh'?'东道主':'Host'}:</b> ${LANG==='zh'?'享主场优势(美/加/墨)':'home advantage applied'}</li>`:""}
     </ul>
     <div class="sect">${t.secMatches}</div>${ms}`;

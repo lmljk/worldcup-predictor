@@ -206,9 +206,11 @@ def fetch_squads(force: bool = False, team_filter: set[str] | None = None) -> di
                 name = re.sub(r"\s*\(.*?\)\s*$", "", cells[2]).strip()  # drop (c) etc.
                 caps = re.sub(r"[^\d]", "", cells[4]) or "0"
                 goals = re.sub(r"[^\d]", "", cells[5]) or "0"
+                club = cells[6].strip() if len(cells) > 6 else ""
                 if pos not in {"GK", "DF", "MF", "FW"} or not name:
                     continue
-                players.append({"name": name, "pos": pos, "caps": int(caps), "goals": int(goals)})
+                players.append({"name": name, "pos": pos, "caps": int(caps),
+                                "goals": int(goals), "club": club})
             if players:
                 data[team] = players
         SQUADS_JSON.write_text(_json.dumps(data, ensure_ascii=False, indent=1))
@@ -216,6 +218,31 @@ def fetch_squads(force: bool = False, team_filter: set[str] | None = None) -> di
     if team_filter:
         return {t: p for t, p in data.items() if t in team_filter}
     return data
+
+
+CLUBELO_URL = "http://api.clubelo.com/{date}"
+CLUB_ELO_JSON = paths.DATA / "club_elo.json"
+
+
+def fetch_club_elo(force: bool = False) -> dict[str, float]:
+    """clubelo.com club Elo ratings (free, no key) → {club_name: elo}. Cached."""
+    import csv
+    import io
+    import json as _json
+    from datetime import date as _date
+
+    if CLUB_ELO_JSON.exists() and not force:
+        return _json.loads(CLUB_ELO_JSON.read_text())
+    r = requests.get(CLUBELO_URL.format(date=_date.today().isoformat()), headers=UA, timeout=30)
+    r.raise_for_status()
+    elo = {}
+    for row in csv.DictReader(io.StringIO(r.text)):
+        try:
+            elo[row["Club"]] = round(float(row["Elo"]), 1)
+        except (ValueError, KeyError):
+            continue
+    CLUB_ELO_JSON.write_text(_json.dumps(elo, ensure_ascii=False))
+    return elo
 
 
 def cache_json(name: str, obj: Any) -> None:

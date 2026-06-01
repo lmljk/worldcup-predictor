@@ -45,6 +45,31 @@ dashboard "model vs market" panel. Biggest model-vs-market divergences (model �
 can't see roster quality, the market can. Blending pulls our estimate toward market and the
 edge column flags where to investigate (injuries, draw difficulty, squad news).
 
+## Run 3 — squad-talent prior (clubelo, fixes the France gap)
+
+Transfermarkt market value is bot-protected (not free-scrapable). Substitute: **clubelo.com**
+club Elo (free, no key) → each squad's talent = mean club Elo of its players (top-club players
+≈ high market value). Captures roster quality the results-based model misses.
+
+Squad-talent ranking (mean club Elo): England 1915, **France 1878 (#2)**, Spain 1866,
+Germany 1858, Brazil 1854 — France is a top-talent squad its recent *results* don't reflect.
+
+Applied as a modest log-space nudge to attack/defence (weight 0.10). Effect on title odds:
+
+| Team | before | after | market | note |
+|------|--------|-------|--------|------|
+| France | 7.0% | **8.7%** | 16.6% | gap −9.5% → −7.9% (narrowed, not erased) |
+| England | 8.7% | 11.5% | 10.8% | now ≈ market |
+| Spain | 15.4% | 18.0% | 16.3% | now ≈ market |
+| Argentina | 16.2% | 16.2% | 8.7% | lower talent (z+1.1), still model-overrated |
+
+**Findings:** talent correctly lifts high-roster-quality sides (France/England/Spain). The
+residual France gap is intentional — fully closing it would just be curve-fitting to the
+market and defeat having an independent model. **Caveat:** this is a current-snapshot prior;
+it can't be walk-forward validated without historical club-Elo snapshots, so it's a transparent
+adjustment (shown as a factor), not a backtest-proven weight. Coverage ~60% of players (clubelo
+is Europe-centric; Saudi/MLS/African-domestic players fall back to a baseline).
+
 ## Open items
 - **Historical raw-market 1X2 baseline** for internationals isn't available free at scale
   (The Odds API soccer/historical is paid; football-data.co.uk is club leagues only). Two

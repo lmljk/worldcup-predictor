@@ -31,3 +31,4 @@ deploy/cloudflared-worldcup.yml
 
 # scraped squad data (regenerable via fetch_squads)
 data/squads_wc2026.json
+data/club_elo.json
