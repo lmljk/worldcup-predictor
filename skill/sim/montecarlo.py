@@ -56,7 +56,7 @@ def _rank_desc(rng, *keys) -> np.ndarray:
 
 
 def run(model, fixtures: pd.DataFrame, n: int = 50000, seed: int = 0,
-        squads: dict | None = None, gb_topk: int = 12) -> dict:
+        squads: dict | None = None, gb_topk: int = 12, context: dict | None = None) -> dict:
     rng = np.random.default_rng(seed)
     groups = reconstruct_groups(fixtures)
     teams = sorted({t for g in groups for t in g})
@@ -70,12 +70,14 @@ def run(model, fixtures: pd.DataFrame, n: int = 50000, seed: int = 0,
     gd = np.zeros((n, nt))
     gf = np.zeros((n, nt))
 
+    context = context or {}
     for r in fixtures.itertuples():
         h, a = tid[r.home_team], tid[r.away_team]
         neutral = bool(r.neutral)
         ha = 0.0 if neutral else hadv
-        lam = np.exp(inter + ha + atk[h] - dfc[a])
-        mu = np.exp(inter + atk[a] - dfc[h])
+        cx = context.get(getattr(r, "fixture_id", None), {})
+        lam = np.exp(inter + ha + atk[h] - dfc[a]) * cx.get("home_mult", 1.0)
+        mu = np.exp(inter + atk[a] - dfc[h]) * cx.get("away_mult", 1.0)
         hg = rng.poisson(lam, n)
         ag = rng.poisson(mu, n)
         hw, aw, dr = hg > ag, ag > hg, hg == ag

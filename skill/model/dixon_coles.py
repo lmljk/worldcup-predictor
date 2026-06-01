@@ -147,9 +147,14 @@ def scoreline_matrix(lam: float, mu: float, rho: float, max_goals: int = 10) -> 
 
 
 def match_probs(model: DCModel, home: str, away: str, neutral: bool = True,
-                max_goals: int = 10) -> dict:
-    """Full set of market probabilities for one fixture."""
+                max_goals: int = 10, lam_mult: float = 1.0, mu_mult: float = 1.0) -> dict:
+    """Full set of market probabilities for one fixture.
+
+    lam_mult/mu_mult apply situational context adjustments (altitude/rest/travel)
+    to each side's expected goals before building the scoreline distribution.
+    """
     lam, mu = model.lambdas(home, away, neutral)
+    lam, mu = lam * lam_mult, mu * mu_mult
     m = scoreline_matrix(lam, mu, model.rho, max_goals)
     idx = np.arange(max_goals + 1)
     p_home = float(np.tril(m, -1).sum())

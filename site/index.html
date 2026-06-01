@@ -278,6 +278,8 @@ function cmpTable(el, rows){
     }).join("");
 }
 function splitPlayer(key){ const m=key.match(/^(.*?)\s*\(([^)]+)\)\s*$/); return m?[m[1],m[2]]:[key,null]; }
+function ctxNote(c){ if(LANG!=="zh")return c;
+  return c.replace(/altitude (\d+)m/,"高原 $1米").replace(/(.+) short rest/,(_,t)=>tName(t)+" 短休息"); }
 function bootTable(el, gb){
   const tsp=(gb||{}).top_scorer_probability, xg=(gb||{}).expected_goals||{};
   if(!tsp||!Object.keys(tsp).length){ el.innerHTML='<tr><td class="err">—</td></tr>'; return; }
@@ -315,6 +317,7 @@ function matchCard(m){
       <span class="chip">${L().btts} <b>${pct(m.p_btts)}</b></span>
       ${top?`<span class="chip"><b>${top}</b></span>`:""}
       ${sc?`<span class="chip clk" data-player="${esc(sc.name)}" data-pteam="${esc(sc.team)}">${L().scorer} <b>${sc.name}</b> ${pct(sc.p_score)}</span>`:""}
+      ${(m.context||[]).map(c=>`<span class="chip" style="border-color:var(--gold);color:var(--gold)">⛰ ${ctxNote(c)}</span>`).join("")}
     </div></div>`;
 }
 function highlights(d){

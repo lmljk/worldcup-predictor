@@ -45,20 +45,23 @@ def _cmd_predict(args):
     except Exception as e:  # noqa: BLE001 — talent is an optional enhancement
         print(f"[talent skipped] {e}", file=sys.stderr)
 
+    from ..model import context as ctxmod
+    ctx = ctxmod.compute(fixtures)
+
     if args.match:
         row = fixtures[fixtures["fixture_id"] == args.match]
         if row.empty:
             print(f"fixture {args.match} not found", file=sys.stderr)
             sys.exit(1)
         row = row.iloc[0]
-        out = _predict_one(model, row, squads)
+        out = _predict_one(model, row, squads, ctx.get(row["fixture_id"]))
         print(json.dumps(out, indent=2, ensure_ascii=False))
         return
 
     preds = []
     for _, row in fixtures.iterrows():
         try:
-            preds.append(_predict_one(model, row, squads))
+            preds.append(_predict_one(model, row, squads, ctx.get(row["fixture_id"])))
         except Exception as e:  # noqa: BLE001 — keep going on sparse teams
             preds.append({"fixture_id": row["fixture_id"], "error": str(e)})
     rep = paths.report_dir() / "predictions.json"
@@ -68,7 +71,7 @@ def _cmd_predict(args):
     sim = None
     if args.simulate:
         from ..sim import montecarlo
-        sim = montecarlo.run(model, fixtures, n=args.sims, squads=squads)
+        sim = montecarlo.run(model, fixtures, n=args.sims, squads=squads, context=ctx)
         (paths.report_dir() / "simulation.json").write_text(
             json.dumps(sim, indent=2, ensure_ascii=False)
         )
@@ -123,7 +126,7 @@ def _detail_payload(model, results, fixtures, squads, sim, talent=None):
     return tf, sq
 
 
-def _predict_one(model, row, squads=None) -> dict:
+def _predict_one(model, row, squads=None, ctx=None) -> dict:
     from ..model import dixon_coles as dc
     from ..model.players import match_scorers
 
@@ -131,15 +134,19 @@ def _predict_one(model, row, squads=None) -> dict:
     neutral = bool(row["neutral"])
     if home not in model.attack or away not in model.attack:
         raise ValueError(f"insufficient data for {home} vs {away}")
-    mp = dc.match_probs(model, home, away, neutral)
+    hm = ctx.get("home_mult", 1.0) if ctx else 1.0
+    am = ctx.get("away_mult", 1.0) if ctx else 1.0
+    mp = dc.match_probs(model, home, away, neutral, lam_mult=hm, mu_mult=am)
     mp["fixture_id"] = row["fixture_id"]
     mp["date"] = str(row["date"].date())
     mp["city"] = row.get("city")
     mp["country"] = row.get("country")
+    if ctx and ctx.get("notes"):
+        mp["context"] = ctx["notes"]
     if squads:
         lam_h, lam_a = model.lambdas(home, away, neutral)
-        mp["scorers_home"] = match_scorers(lam_h, squads.get(home, []), topn=3)
-        mp["scorers_away"] = match_scorers(lam_a, squads.get(away, []), topn=3)
+        mp["scorers_home"] = match_scorers(lam_h * hm, squads.get(home, []), topn=3)
+        mp["scorers_away"] = match_scorers(lam_a * am, squads.get(away, []), topn=3)
     # NOTE: market blend + context adjustments wired once live odds feed exists (M3/M5).
     return mp
 

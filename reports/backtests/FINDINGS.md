@@ -70,6 +70,19 @@ it can't be walk-forward validated without historical club-Elo snapshots, so it'
 adjustment (shown as a factor), not a backtest-proven weight. Coverage ~60% of players (clubelo
 is Europe-centric; Saudi/MLS/African-domestic players fall back to a baseline).
 
+## Run 4 — situational context layer (free: altitude / rest / travel)
+
+Deterministic nudges to match λ from the schedule + a static 16-venue table (altitude,
+coords). No paid data. Modest, transparent priors (not walk-forward validated — WC sample
+too small). Effect: only the 3 Mexico City (2240m) games trigger notable notes — Mexico is
+acclimatised (no penalty), opponents −6% goals, giving Mexico a real home-altitude edge.
+Rest-day differential rarely fires in groups (FIFA spaces rest evenly); travel penalties are
+small. Weather/heat deliberately deferred — Open-Meteo only forecasts ~16 days out, so it's
+wired for the in-tournament review loop, not pre-tournament.
+
+Applied to per-match prediction and the group-stage Monte Carlo; knockout matches stay neutral
+(venues TBD until the bracket resolves).
+
 ## Open items
 - **Historical raw-market 1X2 baseline** for internationals isn't available free at scale
   (The Odds API soccer/historical is paid; football-data.co.uk is club leagues only). Two
