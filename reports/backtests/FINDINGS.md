@@ -139,6 +139,29 @@ Effect: **Neymar share 0.153 → 0.117** (cold), in-form **Raphinha becomes Braz
 of cause*. The exact "is he in today's XI" gate is applied match-day via confirmed lineups
 (`fd_lineup_absences` → `match_scorers(absent=...)`).
 
+## Run 9 — match-importance + steeper-recency weighting: TESTED, NOT adopted
+
+Two user hypotheses, backtested (2016-2023 majors, n≈500, lower RPS better):
+
+| config | DC RPS |
+|--------|--------|
+| baseline (xi=0.0010, importance=0) | **0.1920** |
+| + importance 0.5 / 1.0 (WC/major weighted > friendlies) | 0.1929 / 0.1932 |
+| steeper recency xi=0.003 | 0.1970 |
+| recent-heavy xi=0.005 + importance | 0.2018 |
+
+**Both hurt.** Why: national teams play only ~10 matches/year, so (a) down-weighting
+friendlies/qualifiers throws away real strength signal the model needs, and (b) over-weighting
+the last ~3 years starves an already-small sample. Confirms Run 1 (lower xi is better for
+international football). **Decision: keep importance=0, xi=0.0010.** The `importance` knob is
+kept in `dc.fit` (default off) as a tested, documented option.
+
+**On club football (UCL/leagues):** club *matches* can't enter the national-team match model
+(different entities), but club *strength* already does — `clubelo` ratings are computed from
+those very UCL/league matches and feed the squad-talent factor. Leaning harder on it = raising
+the talent weight, but that's a current-snapshot prior (no historical club-Elo → not
+walk-forward validatable), so it's left modest (0.10).
+
 ## Open items
 - **Historical raw-market 1X2 baseline** for internationals isn't available free at scale
   (The Odds API soccer/historical is paid; football-data.co.uk is club leagues only). Two

@@ -48,6 +48,18 @@ def _tau(h: np.ndarray, a: np.ndarray, lam: np.ndarray, mu: np.ndarray, rho: flo
     return np.clip(t, 1e-9, None)
 
 
+# Match-importance weights for the DC likelihood (competitive matches inform team
+# strength more than friendlies). 0 = importance-blind (all matches equal).
+TOURNAMENT_IMPORTANCE = {
+    "FIFA World Cup": 1.0, "UEFA Euro": 1.0, "Copa América": 1.0,
+    "African Cup of Nations": 0.95, "AFC Asian Cup": 0.95, "Confederations Cup": 0.95,
+    "FIFA World Cup qualification": 0.85, "UEFA Euro qualification": 0.85,
+    "Copa América qualification": 0.85, "UEFA Nations League": 0.8,
+    "Friendly": 0.5,
+}
+IMPORTANCE_DEFAULT = 0.75
+
+
 def fit(
     results: pd.DataFrame,
     as_of: pd.Timestamp,
@@ -55,11 +67,14 @@ def fit(
     ridge: float = 0.01,
     min_matches: int = 8,
     train_years: float = 8.0,
+    importance: float = 0.0,
 ) -> DCModel:
     """Weighted MLE on matches strictly before `as_of`. `xi` is daily decay.
 
-    Matches older than `train_years` carry negligible decay weight, so we drop
-    them — large speedup with no material effect on the fit.
+    `importance` in [0,1] blends in match-importance weighting: 0 = all matches equal
+    (importance-blind), 1 = full TOURNAMENT_IMPORTANCE weighting (WC/Euro/Copa count
+    most, friendlies least). Matches older than `train_years` carry negligible decay
+    weight, so we drop them — large speedup with no material effect on the fit.
     """
     df = results[results["date"] < as_of].copy()
     if train_years:
@@ -82,6 +97,9 @@ def fit(
     neutral = df["neutral"].to_numpy(dtype=bool)
     days = (as_of - df["date"]).dt.days.to_numpy(dtype=float)
     w = np.exp(-xi * days)
+    if importance > 0:
+        imp = df["tournament"].map(TOURNAMENT_IMPORTANCE).fillna(IMPORTANCE_DEFAULT).to_numpy()
+        w = w * (1.0 - importance + importance * imp)  # blend toward importance weighting
 
     # params: [intercept, home_adv, attack(n-1 free), defence(n-1 free), rho]
     # last team's attack/defence pinned to 0 for identifiability.
