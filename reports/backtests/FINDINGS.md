@@ -123,6 +123,22 @@ and would wrongly punish productive veterans. Age is kept as **displayed info on
 + squad average age), not a prediction factor. (Same discipline as the time-decay / context
 findings: a factor must beat baseline to be adopted.)
 
+## Run 8 — cold-form down-weight: TESTED and adopted (the right lever vs age)
+
+Follow-up to Run 7 (age rejected). Question: should a once-strong scorer who has gone cold
+be down-weighted? Test (cutoff 2024-06, no leakage): recent-2y form predicts next-2y goals
+better than older form (R² 0.303 vs 0.278). Decisive split among players strong 2–4y ago:
+- went **cold** (≤1 recent goal): avg **3.46** future goals
+- stayed **hot** (≥4 recent): avg **6.30**
+
+→ **Adopted.** In `players._weight`, a player with career rate ≥ 0.18 (a real scorer) but
+<3 recent goals is scaled to 0.55 / 0.70 / 0.85 (recent 0/1/2); hot scorers boosted as before.
+Effect: **Neymar share 0.153 → 0.117** (cold), in-form **Raphinha becomes Brazil's #1**; Messi
+(age 38 but recent 6) stays high. Confirms form — not age — is the lever, and it handles the
+"injured vs not-scoring" ambiguity correctly because cold players score ~45% less *regardless
+of cause*. The exact "is he in today's XI" gate is applied match-day via confirmed lineups
+(`fd_lineup_absences` → `match_scorers(absent=...)`).
+
 ## Open items
 - **Historical raw-market 1X2 baseline** for internationals isn't available free at scale
   (The Odds API soccer/historical is paid; football-data.co.uk is club leagues only). Two

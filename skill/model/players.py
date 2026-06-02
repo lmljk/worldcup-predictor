@@ -26,15 +26,27 @@ def player_rate(p: dict) -> float:
     return (goals + SHRINK * prior) / (caps + SHRINK)
 
 
-def _weight(p: dict) -> float:
-    """Goal-share weight = career rate × recent-form boost × penalty-taker boost.
+SCORER_RATE = 0.18  # career goals/cap above which a player is a "regular scorer"
 
-    Recent form and penalty duties come from the goalscorers dataset (see enrich_form).
-    Both are modest, transparent multipliers on top of the career scoring rate.
+
+def _weight(p: dict) -> float:
+    """Goal-share weight = career rate × form factor × penalty-taker boost.
+
+    Form factor (from goalscorers recent-2y goals):
+      * hot scorers get boosted;
+      * a player who WAS a scorer (career rate ≥ SCORER_RATE) but has gone cold
+        (<3 recent goals) is pulled DOWN — backtest: once-strong scorers who went cold
+        score ~45% fewer future goals than those who stayed hot (3.46 vs 6.30).
+    This handles fading/peripheral attackers (e.g. Neymar) without an age factor; the
+    exact "is he even playing" signal is applied separately from match-day lineups.
     """
     base = player_rate(p)
-    form_mult = min(1.5, 1.0 + 0.06 * p.get("recent_goals", 0))   # in-form scorers
-    pen_mult = 1.15 if p.get("pen_taker") else 1.0                 # penalty taker
+    rg = p.get("recent_goals", 0)
+    if base >= SCORER_RATE and rg < 3:
+        form_mult = 0.55 + 0.15 * rg            # cold: 0.55 / 0.70 / 0.85
+    else:
+        form_mult = min(1.5, 1.0 + 0.06 * rg)   # hot boost
+    pen_mult = 1.15 if p.get("pen_taker") else 1.0
     return base * form_mult * pen_mult
 
 
@@ -74,12 +86,21 @@ def enrich_form(squads: dict, goalscorers, since) -> dict:
     return squads
 
 
-def match_scorers(lam_team: float, squad: list[dict], topn: int = 5) -> list[dict]:
-    """Top likely scorers for one side given that side's expected goals."""
+def match_scorers(lam_team: float, squad: list[dict], topn: int = 5,
+                  absent: set | None = None) -> list[dict]:
+    """Top likely scorers for one side given that side's expected goals.
+
+    `absent` = players confirmed NOT in today's XI (from match-day lineups) — they are
+    dropped and their share redistributed, the clean 'is he actually playing' signal that
+    recent-form alone can't give. Empty pre-match (lineups publish ~1h before kickoff)."""
     import math
 
+    absent = absent or set()
+    shares = [(n, pos, s) for n, pos, s in goal_shares(squad) if n not in absent]
+    tot = sum(s for _, _, s in shares) or 1.0
+    shares = [(n, pos, s / tot) for n, pos, s in shares]
     out = []
-    for name, pos, share in goal_shares(squad):
+    for name, pos, share in shares:
         lam_p = lam_team * share
         if lam_p <= 0:
             continue
