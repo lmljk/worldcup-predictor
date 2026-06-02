@@ -362,6 +362,66 @@ def _cmd_review(args):
     _cmd_publish(argparse.Namespace(date=None))
 
 
+def _accuracy_payload() -> dict:
+    """Live prediction scoreboard: every completed WC match vs our last pre-kickoff forecast.
+
+    For each played WC match we take the prediction from the most recent report dated on or
+    before the match date (no hindsight), mark the 1X2 pick correct/wrong, and aggregate an
+    overall accuracy-to-date (hit rate, RPS, Brier). Empty until the tournament starts.
+    """
+    import glob
+
+    from ..backtest import metrics
+
+    res = data_loader.fetch_historical()
+    played = res[(res["tournament"] == paths.WC2026_TOURNAMENT)
+                 & (res["date"] >= pd.Timestamp(paths.WC2026_START))
+                 & res["home_score"].notna()].copy()
+    # index predictions by (matchdate, home, away) -> keep latest report date <= matchdate
+    idx = {}
+    for f in sorted(glob.glob(str(paths.REPORTS / "*" / "predictions.json"))):
+        rdate = f.split("/")[-2]
+        for p in json.loads(open(f).read()):
+            if p.get("error") or not p.get("date"):
+                continue
+            if rdate <= p["date"]:  # forecast made on/before kickoff day
+                key = (p["date"], p["home"], p["away"])
+                if key not in idx or rdate >= idx[key][0]:
+                    idx[key] = (rdate, p)
+
+    labels = lambda h, a: [f"{h} win", "Draw", f"{a} win"]
+    by_match, rows = {}, []
+    for r in played.itertuples():
+        key = (str(r.date.date()), r.home_team, r.away_team)
+        hit = idx.get(key)
+        if not hit:
+            continue
+        p = hit[1]
+        probs = np.array([p["p_home"], p["p_draw"], p["p_away"]])
+        pick = int(np.argmax(probs))
+        outcome = metrics.outcome_index(int(r.home_score), int(r.away_score))
+        correct = pick == outcome
+        rec = {
+            "date": key[0], "home": r.home_team, "away": r.away_team,
+            "score": f"{int(r.home_score)}-{int(r.away_score)}",
+            "pick": labels(r.home_team, r.away_team)[pick],
+            "pick_prob": round(float(probs[pick]), 3),
+            "actual": labels(r.home_team, r.away_team)[outcome],
+            "correct": bool(correct),
+            "rps": round(metrics.rps(probs, outcome), 4),
+        }
+        rows.append(rec)
+        by_match[f"{key[0]}|{r.home_team}|{r.away_team}"] = {
+            "score": rec["score"], "correct": rec["correct"], "actual_idx": outcome}
+    rows.sort(key=lambda x: x["date"])
+    summary = {"n": len(rows)}
+    if rows:
+        summary["correct"] = sum(1 for x in rows if x["correct"])
+        summary["hit_rate"] = round(summary["correct"] / len(rows), 4)
+        summary["mean_rps"] = round(float(np.mean([x["rps"] for x in rows])), 4)
+    return {"summary": summary, "results": rows, "by_match": by_match}
+
+
 def _cmd_publish(args):
     """Bundle the latest predictions + simulation into site/data.json for the dashboard."""
     import datetime as _dt
@@ -383,6 +443,7 @@ def _cmd_publish(args):
         "squads": json.loads(sq_f.read_text()) if sq_f.exists() else {},
         "portraits": json.loads((paths.DATA / "portraits.json").read_text())
         if (paths.DATA / "portraits.json").exists() else {},
+        "live_accuracy": _accuracy_payload(),
     }
     # Market anchor: Polymarket title odds vs our Monte Carlo (model-vs-market + edge).
     model_title = sim.get("title_probability", {})

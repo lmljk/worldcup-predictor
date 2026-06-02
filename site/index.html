@@ -111,6 +111,15 @@
   .dmatch .res{margin-left:auto;font-variant-numeric:tabular-nums;color:var(--mut);}
   .dmatch .res b{color:var(--txt);}
   .sect{font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--mut);margin:18px 0 6px;}
+  /* live accuracy banner */
+  .accb{background:linear-gradient(135deg,#13351f,#0e1420);border:1px solid #1f5d36;border-radius:16px;
+        padding:18px 20px;margin:16px 0 4px;display:flex;align-items:center;gap:28px;flex-wrap:wrap;}
+  .accb .big{font-size:34px;font-weight:800;line-height:1;}
+  .accb .lab{color:var(--mut);font-size:12px;text-transform:uppercase;letter-spacing:.5px;margin-top:4px;}
+  .accb .grp{min-width:90px;}
+  .accpending{background:var(--card);border:1px dashed var(--line);border-radius:14px;padding:14px 18px;
+        margin:16px 0 4px;color:var(--mut);font-size:13.5px;}
+  .ok{color:var(--acc);} .no{color:var(--red);}
   .clk{cursor:pointer;}
   .clk:hover{text-decoration:underline;text-decoration-color:var(--acc2);text-underline-offset:2px;}
 </style>
@@ -139,6 +148,7 @@
            onkeydown="if(event.key==='Enter'){const h=document.getElementById('results')._hits;if(h&&h.length)pick(0);}" placeholder="">
     <div class="results" id="results"></div>
   </div>
+  <div id="accbanner"></div>
   <div class="hl" id="highlights"></div>
   <main>
     <div class="cols">
@@ -154,6 +164,9 @@
 
     <h2><span class="bar"></span><span id="t-cmp"></span> <span class="note" id="t-cmp-note"></span></h2>
     <table id="cmp"></table>
+
+    <h2 id="h-acc" style="display:none"><span class="bar"></span><span id="t-acc"></span> <span class="note" id="t-acc-note"></span></h2>
+    <table id="acc"></table>
 
     <h2 id="h-move" style="display:none"><span class="bar"></span><span id="t-move"></span> <span class="note" id="t-move-note"></span></h2>
     <table id="move"></table>
@@ -198,6 +211,10 @@ const I18N = {
     sRecent:"Recent goals (2y)", penTaker:"PK taker",
     move:"Market movement — odds drift", moveNote:"~7-day change in title odds: the public footprint of late info (injuries, sharp money)",
     mNow:"Market", mDelta:"7d Δ", mTrend:"Trend",
+    accTitle:"Live prediction accuracy", accNote:"every finished match vs our pre-kickoff forecast",
+    accHit:"Accuracy to date", accRps:"Avg RPS", accRec:"Record", accMatches:"matches",
+    accStarts:"⏳ Live scoreboard activates when the World Cup kicks off (Jun 11) — each result will be checked against our forecast.",
+    resMatch:"Match", resPick:"Our pick", resActual:"Actual",
     win:"Win", lose:"Lose", pscore:"P(score)", noimg:"no photo", rankN:(r,n)=>`#${r} / ${n}` },
   zh:{ title:"⚽ 2026 世界杯 — 预测",
     tag:"市场锚定集成模型 —— Dixon-Coles 比分模型 + ELO 实力评分,与博彩市场融合,并用蒙特卡洛模拟全部 104 场比赛。",
@@ -221,6 +238,10 @@ const I18N = {
     sRecent:"近2年进球", penTaker:"点球手",
     move:"市场异动 — 赔率漂移", moveNote:"夺冠赔率近 7 天变化:内部消息(伤病/聪明钱)在公开市场的唯一足迹",
     mNow:"市场", mDelta:"7天Δ", mTrend:"趋势",
+    accTitle:"实时预测战绩", accNote:"每场完赛结果 vs 我们赛前的预测",
+    accHit:"截至目前准确率", accRps:"平均 RPS", accRec:"战绩", accMatches:"场",
+    accStarts:"⏳ 6 月 11 日世界杯开赛后,实时战绩看板自动启动 —— 每场结果都会与我们的预测对照。",
+    resMatch:"比赛", resPick:"我们的预测", resActual:"实际",
     win:"胜", lose:"负", pscore:"进球概率", noimg:"暂无照片", rankN:(r,n)=>`第${r}/${n}` }
 };
 /* ---------- team metadata: English name -> {iso, zh} ---------- */
@@ -287,6 +308,34 @@ function cmpTable(el, rows){
     }).join("");
 }
 function splitPlayer(key){ const m=key.match(/^(.*?)\s*\(([^)]+)\)\s*$/); return m?[m[1],m[2]]:[key,null]; }
+function accBanner(el, la){
+  const s=(la&&la.summary)||{n:0};
+  if(!s.n){ el.className="accpending"; el.textContent=L().accStarts; return; }
+  el.className="accb";
+  el.innerHTML=`
+    <div class="grp"><div class="big ${s.hit_rate>=0.5?'ok':''}">${(s.hit_rate*100).toFixed(0)}%</div><div class="lab">${L().accHit}</div></div>
+    <div class="grp"><div class="big">${s.correct}/${s.n}</div><div class="lab">${L().accRec}</div></div>
+    <div class="grp"><div class="big">${(s.mean_rps||0).toFixed(3)}</div><div class="lab">${L().accRps}</div></div>
+    <div style="color:var(--mut);font-size:12.5px;flex:1;min-width:160px">${L().accNote}</div>`;
+}
+function accTable(el, la){
+  const rows=(la&&la.results)||[];
+  document.getElementById("h-acc").style.display = rows.length?"flex":"none";
+  if(!rows.length){ el.innerHTML=""; return; }
+  el.innerHTML="<tr><th></th><th>"+L().resMatch+"</th><th>"+L().resActual+"</th><th>"+L().resPick+"</th></tr>"+
+    [...rows].reverse().slice(0,40).map(r=>`<tr>
+      <td>${r.correct?'<span class="ok">✓</span>':'<span class="no">✗</span>'}</td>
+      <td><span class="tcell">${flag(r.home)}${tName(r.home)} <b>${r.score}</b> ${tName(r.away)}${flag(r.away)}</span><div style="color:var(--mut);font-size:11px">${r.date}</div></td>
+      <td>${actLabel(r.actual,r.home,r.away)}</td>
+      <td class="${r.correct?'ok':'no'}">${actLabel(r.pick,r.home,r.away)} <span style="color:var(--mut)">${pct(r.pick_prob)}</span></td>
+    </tr>`).join("");
+}
+function actLabel(s,h,a){ // localise "X win"/"Draw"
+  if(s==="Draw") return LANG==="zh"?"平":"Draw";
+  if(s===h+" win") return tName(h)+(LANG==="zh"?" 胜":" win");
+  if(s===a+" win") return tName(a)+(LANG==="zh"?" 胜":" win");
+  return s;
+}
 function sparkline(series,w=90,h=22){
   const s=(series||[]).filter(x=>x!=null); if(s.length<2) return "";
   const mn=Math.min(...s),mx=Math.max(...s),rng=(mx-mn)||1;
@@ -328,8 +377,10 @@ function matchCard(m){
   const scl=[...(m.scorers_home||[]).map(s=>({...s,team:m.home})),...(m.scorers_away||[]).map(s=>({...s,team:m.away}))].sort((x,y)=>y.exp_goals-x.exp_goals);
   const sc=scl[0];
   const lab=v=>v>=11?v.toFixed(0):"";
-  return `<div class="card">
-    <div class="mtop"><span>${m.date||""}</span><span>${m.city||""}</span></div>
+  const bm=((DATA.live_accuracy||{}).by_match||{})[`${m.date}|${m.home}|${m.away}`];
+  const resultBadge = bm?`<span style="font-weight:700;color:${bm.correct?'var(--acc)':'var(--red)'}">${bm.score} ${bm.correct?'✓':'✗'}</span>`:"";
+  return `<div class="card"${bm?' style="border-color:'+(bm.correct?'#1f5d36':'#5d1f24')+'"':''}>
+    <div class="mtop"><span>${m.date||""}</span><span>${resultBadge||m.city||""}</span></div>
     <div class="vs">
       <span class="side clk" data-team="${esc(m.home)}">${flag(m.home)}<span>${tName(m.home)}</span></span>
       <span class="vsx">VS</span>
@@ -381,6 +432,8 @@ function render(){
   const nsrc=(DATA.market_title||{}).n_sources, srcs=(DATA.market_title||{}).sources;
   document.getElementById("t-cmp-note").textContent="· "+t.cmpNote+(nsrc>1?` · ${LANG==='zh'?nsrc+' 家市场共识':nsrc+'-market consensus'} (${srcs})`:"");
   document.getElementById("search").placeholder=t.search;
+  document.getElementById("t-acc").textContent=t.accTitle;
+  document.getElementById("t-acc-note").textContent="· "+t.accNote;
   document.getElementById("t-move").textContent=t.move;
   document.getElementById("t-move-note").textContent="· "+t.moveNote;
   document.getElementById("t-boot").textContent=t.boot;
@@ -396,6 +449,8 @@ function render(){
   highlights(DATA);
   probTable(document.getElementById("title"), sim.title_probability, 16);
   probTable(document.getElementById("r32"), sim.reach_knockout_R32, 16);
+  accBanner(document.getElementById("accbanner"), DATA.live_accuracy);
+  accTable(document.getElementById("acc"), DATA.live_accuracy);
   cmpTable(document.getElementById("cmp"), DATA.title_comparison);
   moveTable(document.getElementById("move"), DATA.movement);
   bootTable(document.getElementById("boot"), sim.golden_boot);
