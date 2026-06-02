@@ -104,6 +104,25 @@ field): France 8.7%→9.7%, England→12.6%. Bracket tree uses the published adj
 Approximation vs FIFA Annex C: the *exact* third-to-slot row isn't replicated, but eligibility
 + same-group separation are enforced (legal, realistic paths).
 
+## Run 7 — player age: TESTED, NOT adopted (negative result)
+
+Question: does player age improve goal prediction (e.g. down-weight older players like Neymar)?
+Data: scraped DOB/age for 1247 squad players; joined to goalscorers history.
+
+1. **Naive scoring-by-age curve is survivorship-biased** — the 33+ bucket shows a *higher*
+   rate (3.10 g/yr) than mid-20s (1.89), because the only 33+ players in a 2026 squad are
+   elite survivors (Ronaldo, Messi, Modrić), not average decliners.
+2. **Predictive test (no leakage):** predict a player's goals in the next 2 years from prior
+   3-year goals, with vs without age. R² = 0.358 (form only) → 0.360 (form + age + age²),
+   **Δ = +0.002 — negligible**. Among in-form players (≥5 prior goals), the ≥32 group actually
+   scored *more* in the window (5.19) than ≤28 (4.57).
+
+**Decision: do NOT fit an age multiplier.** Recent form already encodes decline — a player who
+has slowed (e.g. Neymar) shows up as low recent-goals, so an explicit age penalty is redundant
+and would wrongly punish productive veterans. Age is kept as **displayed info only** (player age
++ squad average age), not a prediction factor. (Same discipline as the time-decay / context
+findings: a factor must beat baseline to be adopted.)
+
 ## Open items
 - **Historical raw-market 1X2 baseline** for internationals isn't available free at scale
   (The Odds API soccer/historical is paid; football-data.co.uk is club leagues only). Two

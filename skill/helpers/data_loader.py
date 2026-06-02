@@ -230,8 +230,15 @@ def fetch_squads(force: bool = False, team_filter: set[str] | None = None) -> di
                 club = cells[6].strip() if len(cells) > 6 else ""
                 if pos not in {"GK", "DF", "MF", "FW"} or not name:
                     continue
+                dob = ""
+                age = None
+                m = re.search(r"(\d{4}-\d{2}-\d{2})", cells[3]) if len(cells) > 3 else None
+                if m:
+                    dob = m.group(1)
+                    by, bm, bd = (int(x) for x in dob.split("-"))
+                    age = paths.WC2026_START.year - by - ((6, 11) < (bm, bd))
                 players.append({"name": name, "pos": pos, "caps": int(caps),
-                                "goals": int(goals), "club": club})
+                                "goals": int(goals), "club": club, "dob": dob, "age": age})
             if players:
                 data[team] = players
         SQUADS_JSON.write_text(_json.dumps(data, ensure_ascii=False, indent=1))

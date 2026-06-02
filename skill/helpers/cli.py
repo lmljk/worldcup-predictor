@@ -122,11 +122,14 @@ def _detail_payload(model, results, fixtures, squads, sim, talent=None):
     tf = {}
     for t in teams:
         tl = talent.get(t, {})
+        sqd = squads.get(t, [])
+        team_ages = [p["age"] for p in sqd if p.get("age")]
         tf[t] = {
             "elo": round(float(elo.get(t, 1500)), 0),
             "attack": round(model.attack.get(t, 0.0), 3),
             "defence": round(model.defence.get(t, 0.0), 3),
             "talent": tl.get("talent"), "talent_z": tl.get("talent_z"),
+            "avg_age": round(sum(team_ages) / len(team_ages), 1) if team_ages else None,
             "host": t in hosts,
             "title": tp.get(t), "advance": adv.get(t), "r32": r32.get(t), "final": fin.get(t),
         }
@@ -138,7 +141,8 @@ def _detail_payload(model, results, fixtures, squads, sim, talent=None):
         share = {n: sh for n, _p, sh in goal_shares(s)}
         sq[t] = [{"name": p["name"], "pos": p["pos"], "caps": p["caps"], "goals": p["goals"],
                   "rate": round(player_rate(p), 3), "share": round(share.get(p["name"], 0.0), 4),
-                  "recent_goals": p.get("recent_goals", 0), "pen_taker": bool(p.get("pen_taker"))}
+                  "recent_goals": p.get("recent_goals", 0), "pen_taker": bool(p.get("pen_taker")),
+                  "age": p.get("age")}
                  for p in s]
     return tf, sq
 

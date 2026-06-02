@@ -423,8 +423,9 @@ function teamEval(tf){
   let tier = T>=10?(zh?"顶级争冠热门":"top title contender"):T>=4?(zh?"有力竞争者":"strong contender"):T>=1?(zh?"黑马":"a dark horse"):(zh?"以出线为目标":"aiming to escape the group");
   const style = tf.attack>tf.defence?(zh?"进攻型打法":"attack-minded"):(zh?"防守稳健":"defensively solid");
   const er=rankOf(tf.elo,"elo");
-  return zh?`${tName(tf._name)} 是${tier}(ELO 全场第 ${er}),整体偏${style}。模型给出约 ${T.toFixed(1)}% 夺冠、${((tf.advance||0)*100).toFixed(0)}% 小组出线。`
-          :`${tf._name} is ${tier} (ELO #${er}), ${style}. The model gives ~${T.toFixed(1)}% to win it all and ${((tf.advance||0)*100).toFixed(0)}% to advance.`;
+  const ageTxt = tf.avg_age ? (zh?` 阵容平均 ${tf.avg_age} 岁。`:` Squad avg age ${tf.avg_age}.`) : "";
+  return zh?`${tName(tf._name)} 是${tier}(ELO 全场第 ${er}),整体偏${style}。模型给出约 ${T.toFixed(1)}% 夺冠、${((tf.advance||0)*100).toFixed(0)}% 小组出线。${ageTxt}`
+          :`${tf._name} is ${tier} (ELO #${er}), ${style}. The model gives ~${T.toFixed(1)}% to win it all and ${((tf.advance||0)*100).toFixed(0)}% to advance.${ageTxt}`;
 }
 function stat(n,k){ return `<div class="stat"><div class="n">${n}</div><div class="k">${k}</div></div>`; }
 function openTeam(team){
@@ -470,7 +471,7 @@ function openPlayer(name,team){
     <button class="x" onclick="closeModal()">×</button>
     <div class="dh">
       ${portraitImg(name)}
-      <div><h3>${name}</h3><div class="role">${flag(team).replace('class="flag"','class="flag" style="width:20px;height:13px"')} ${tName(team)} · ${p.pos}${p.pen_taker?` · <span style="color:var(--gold)">⚽ ${t.penTaker}</span>`:""}</div></div></div>
+      <div><h3>${name}</h3><div class="role">${flag(team).replace('class="flag"','class="flag" style="width:20px;height:13px"')} ${tName(team)} · ${p.pos}${p.age?` · ${p.age}${LANG==='zh'?'岁':'y'}`:""}${p.pen_taker?` · <span style="color:var(--gold)">⚽ ${t.penTaker}</span>`:""}</div></div></div>
     <div class="evalbox">${ev}</div>
     <div class="sect">${t.secOverall}</div>
     <div class="statgrid">
