@@ -36,3 +36,6 @@ data/club_elo.json
 # self-hosted player portraits (regenerable via 'portraits')
 site/portraits/
 data/portraits.json
+
+# accumulating probability snapshots (movement tracking)
+data/history.json

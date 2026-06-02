@@ -155,6 +155,9 @@
     <h2><span class="bar"></span><span id="t-cmp"></span> <span class="note" id="t-cmp-note"></span></h2>
     <table id="cmp"></table>
 
+    <h2 id="h-move" style="display:none"><span class="bar"></span><span id="t-move"></span> <span class="note" id="t-move-note"></span></h2>
+    <table id="move"></table>
+
     <h2><span class="bar"></span><span id="t-boot"></span> <span class="note" id="t-boot-note"></span></h2>
     <table id="boot"></table>
 
@@ -193,6 +196,8 @@ const I18N = {
     sElo:"ELO", sAtk:"Attack", sDef:"Defence", sBoot:"Golden Boot", sExpG:"Exp. goals",
     sCaps:"Caps", sCareer:"Career goals", sShare:"Goal share", sRate:"Scoring rate",
     sRecent:"Recent goals (2y)", penTaker:"PK taker",
+    move:"Market movement — odds drift", moveNote:"~7-day change in title odds: the public footprint of late info (injuries, sharp money)",
+    mNow:"Market", mDelta:"7d Δ", mTrend:"Trend",
     win:"Win", lose:"Lose", pscore:"P(score)", noimg:"no photo", rankN:(r,n)=>`#${r} / ${n}` },
   zh:{ title:"⚽ 2026 世界杯 — 预测",
     tag:"市场锚定集成模型 —— Dixon-Coles 比分模型 + ELO 实力评分,与博彩市场融合,并用蒙特卡洛模拟全部 104 场比赛。",
@@ -214,6 +219,8 @@ const I18N = {
     sElo:"ELO 评分", sAtk:"进攻", sDef:"防守", sBoot:"金靴概率", sExpG:"预期进球",
     sCaps:"出场", sCareer:"生涯进球", sShare:"进球占比", sRate:"进球率",
     sRecent:"近2年进球", penTaker:"点球手",
+    move:"市场异动 — 赔率漂移", moveNote:"夺冠赔率近 7 天变化:内部消息(伤病/聪明钱)在公开市场的唯一足迹",
+    mNow:"市场", mDelta:"7天Δ", mTrend:"趋势",
     win:"胜", lose:"负", pscore:"进球概率", noimg:"暂无照片", rankN:(r,n)=>`第${r}/${n}` }
 };
 /* ---------- team metadata: English name -> {iso, zh} ---------- */
@@ -280,6 +287,25 @@ function cmpTable(el, rows){
     }).join("");
 }
 function splitPlayer(key){ const m=key.match(/^(.*?)\s*\(([^)]+)\)\s*$/); return m?[m[1],m[2]]:[key,null]; }
+function sparkline(series,w=90,h=22){
+  const s=(series||[]).filter(x=>x!=null); if(s.length<2) return "";
+  const mn=Math.min(...s),mx=Math.max(...s),rng=(mx-mn)||1;
+  const pts=s.map((v,i)=>`${(i/(s.length-1)*w).toFixed(1)},${(h-2-(v-mn)/rng*(h-4)).toFixed(1)}`).join(" ");
+  const up=s[s.length-1]>=s[0];
+  return `<svg width="${w}" height="${h}" style="vertical-align:middle"><polyline points="${pts}" fill="none" stroke="${up?'var(--acc)':'var(--red)'}" stroke-width="1.5"/></svg>`;
+}
+function moveTable(el, mv){
+  const movers=(mv&&mv.top_movers)||[];
+  const meaningful=movers.filter(m=>Math.abs(m.delta)>=0.002);
+  document.getElementById("h-move").style.display = meaningful.length?"flex":"none";
+  if(!meaningful.length){ el.innerHTML=""; return; }
+  const series=mv.market_series||{};
+  el.innerHTML="<tr><th>"+L().team+"</th><th>"+L().mNow+"</th><th>"+L().mDelta+"</th><th>"+L().mTrend+"</th></tr>"+
+    meaningful.slice(0,12).map(m=>{const cls=m.delta>0?"up":(m.delta<0?"down":"flat"),s=m.delta>0?"+":"";
+      return `<tr><td>${teamCell(m.team)}</td><td class="pct">${pct(m.market_now)}</td>
+        <td class="pct ${cls}">${s}${(m.delta*100).toFixed(1)}%</td>
+        <td>${sparkline(series[m.team])}</td></tr>`;}).join("");
+}
 function ctxNote(c){ if(LANG!=="zh")return c;
   return c.replace(/altitude (\d+)m/,"高原 $1米").replace(/(.+) short rest/,(_,t)=>tName(t)+" 短休息"); }
 function bootTable(el, gb){
@@ -354,6 +380,8 @@ function render(){
   document.getElementById("t-cmp").textContent=t.cmp;
   document.getElementById("t-cmp-note").textContent="· "+t.cmpNote;
   document.getElementById("search").placeholder=t.search;
+  document.getElementById("t-move").textContent=t.move;
+  document.getElementById("t-move-note").textContent="· "+t.moveNote;
   document.getElementById("t-boot").textContent=t.boot;
   document.getElementById("t-boot-note").textContent="· "+t.bootNote;
   document.getElementById("t-matches").textContent=t.matches;
@@ -368,6 +396,7 @@ function render(){
   probTable(document.getElementById("title"), sim.title_probability, 16);
   probTable(document.getElementById("r32"), sim.reach_knockout_R32, 16);
   cmpTable(document.getElementById("cmp"), DATA.title_comparison);
+  moveTable(document.getElementById("move"), DATA.movement);
   bootTable(document.getElementById("boot"), sim.golden_boot);
   const ms=(DATA.predictions||[]).filter(m=>!m.error);
   document.getElementById("mcount").textContent="· "+t.mcount(ms.length);

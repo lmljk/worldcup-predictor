@@ -409,6 +409,34 @@ def _cmd_publish(args):
             )
             data["market_title"] = mk
             data["title_comparison"] = comparison
+
+    # ---- probability movement tracking (odds drift = the public footprint of insider info) ----
+    # Snapshot today's model + market title probs; movement is computed vs ~7 entries ago.
+    hist_f = paths.DATA / "history.json"
+    hist = json.loads(hist_f.read_text()) if hist_f.exists() else {}
+    mkt_now = (data.get("market_title", {}) or {}).get("implied_title_prob", {})
+    hist[data["report_date"]] = {"model": model_title, "market": mkt_now}
+    hist = dict(sorted(hist.items())[-90:])  # keep last 90 days
+    hist_f.write_text(json.dumps(hist, ensure_ascii=False))
+    dates = sorted(hist)
+    if len(dates) >= 2:
+        prev = hist[dates[max(0, len(dates) - 8)]]  # ~7 snapshots ago
+        cur = hist[dates[-1]]
+        teams_m = set(cur["market"]) | set(prev.get("market", {}))
+        movers = []
+        for t in teams_m:
+            mc, mp = cur["market"].get(t), prev.get("market", {}).get(t)
+            if mc is None or mp is None:
+                continue
+            movers.append({"team": t, "market_now": round(mc, 4),
+                           "delta": round(mc - mp, 4),
+                           "model_now": round(cur["model"].get(t, 0), 4)})
+        movers.sort(key=lambda x: -abs(x["delta"]))
+        # per-team market series (for sparklines), last 14 snapshots
+        series = {t: [round(hist[d]["market"].get(t, 0), 4) for d in dates[-14:]]
+                  for t in [m["team"] for m in movers[:20]]}
+        data["movement"] = {"since": dates[max(0, len(dates) - 8)], "as_of": dates[-1],
+                            "top_movers": movers[:20], "market_series": series}
     (paths.SITE / "data.json").write_text(json.dumps(data, ensure_ascii=False))
     print(f"published -> {paths.SITE / 'data.json'} "
           f"({len(data['predictions'])} fixtures, sim={'yes' if sim_f.exists() else 'no'}, "
