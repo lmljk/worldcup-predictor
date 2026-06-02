@@ -273,6 +273,85 @@ def fetch_club_elo(force: bool = False) -> dict[str, float]:
     return elo
 
 
+ODDS_API_BASE = "https://api.the-odds-api.com/v4"
+ODDS_API_SPORTS = ["soccer_fifa_world_cup", "soccer_fifa_world_cup_2026"]
+
+
+def _devig3(odds: list[float]) -> list[float]:
+    inv = [1.0 / o for o in odds if o and o > 1]
+    s = sum(inv)
+    return [x / s for x in inv] if len(inv) == 3 and s else []
+
+
+def fetch_oddsapi_matches() -> dict[tuple, list[float]]:
+    """The Odds API (paid key) → per-match 1X2 consensus across ALL bookmakers.
+
+    De-vigs each bookmaker's H/D/A, then averages across books (Pinnacle, Bet365, etc.).
+    Returns {(home, away): [pH, pD, pA]}. Empty if no ODDS_API_KEY — activates when you add
+    a key. This is the real multi-sportsbook consensus path."""
+    key = os.environ.get("ODDS_API_KEY", "")
+    if not key:
+        return {}
+    out = {}
+    for sport in ODDS_API_SPORTS:
+        try:
+            r = requests.get(f"{ODDS_API_BASE}/sports/{sport}/odds", params={
+                "apiKey": key, "regions": "eu,uk,us", "markets": "h2h",
+                "oddsFormat": "decimal"}, headers=UA, timeout=30)
+            if r.status_code != 200:
+                continue
+            for ev in r.json():
+                home, away = ev.get("home_team"), ev.get("away_team")
+                books = []
+                for bk in ev.get("bookmakers", []):
+                    for mk in bk.get("markets", []):
+                        if mk.get("key") != "h2h":
+                            continue
+                        o = {x["name"]: x["price"] for x in mk.get("outcomes", [])}
+                        trio = [o.get(home), o.get("Draw"), o.get(away)]
+                        if all(trio):
+                            dv = _devig3(trio)
+                            if dv:
+                                books.append(dv)
+                if books and home and away:
+                    avg = [sum(b[i] for b in books) / len(books) for i in range(3)]
+                    out[(_canon(home), _canon(away))] = avg
+        except requests.RequestException:
+            continue
+    return out
+
+
+def fetch_oddsapi_title(team_filter: set[str] | None = None) -> dict[str, float]:
+    """The Odds API outrights → {team: de-vigged title prob} (multi-book). Empty w/o key."""
+    key = os.environ.get("ODDS_API_KEY", "")
+    if not key:
+        return {}
+    for sport in ODDS_API_SPORTS:
+        try:
+            r = requests.get(f"{ODDS_API_BASE}/sports/{sport}/odds", params={
+                "apiKey": key, "regions": "eu,uk,us", "markets": "outrights",
+                "oddsFormat": "decimal"}, headers=UA, timeout=30)
+            if r.status_code != 200:
+                continue
+            raw = {}
+            for ev in r.json():
+                for bk in ev.get("bookmakers", []):
+                    for mk in bk.get("markets", []):
+                        for o in mk.get("outcomes", []):
+                            t = _canon(o["name"])
+                            if o.get("price", 0) > 1:
+                                raw.setdefault(t, []).append(1.0 / o["price"])
+            if raw:
+                imp = {t: sum(v) / len(v) for t, v in raw.items()}
+                if team_filter:
+                    imp = {t: p for t, p in imp.items() if t in team_filter}
+                s = sum(imp.values())
+                return {t: round(p / s, 5) for t, p in imp.items()} if s else {}
+        except requests.RequestException:
+            continue
+    return {}
+
+
 def _fd_headers() -> dict:
     return {"X-Auth-Token": os.environ.get("FOOTBALL_DATA_API_KEY", ""), **UA}
 
@@ -331,6 +410,20 @@ def fetch_match_markets() -> dict[tuple, list[float]]:
     automatically once books/markets list the matches. Defensive: never raises.
     """
     out: dict[tuple, list[float]] = {}
+    sources: dict[tuple, int] = {}
+
+    def _add(key, probs):
+        if key in out:  # average across markets/books that quote this match
+            n = sources[key]
+            out[key] = [(out[key][i] * n + probs[i]) / (n + 1) for i in range(3)]
+            sources[key] = n + 1
+        else:
+            out[key] = probs
+            sources[key] = 1
+
+    # The Odds API: 50+ bookmakers (Pinnacle/Bet365/...) — multi-book consensus (paid key)
+    for k, p in fetch_oddsapi_matches().items():
+        _add(k, p)
     # Polymarket: look for 90-minute result markets with H/D/A outcomes
     try:
         r = requests.get(f"{paths.POLYMARKET_GAMMA}/public-search",
@@ -350,7 +443,8 @@ def fetch_match_markets() -> dict[tuple, list[float]]:
                     teams = title.split(":")[-1].split(" vs")
                     if len(teams) >= 2:
                         s = sum(prices) or 1
-                        out[(teams[0].strip(), teams[1].split("–")[0].strip())] = [p / s for p in prices]
+                        _add((_canon(teams[0].strip()), _canon(teams[1].split("–")[0].strip())),
+                             [p / s for p in prices])
     except (requests.RequestException, ValueError):
         pass
     return out

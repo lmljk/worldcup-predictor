@@ -378,7 +378,8 @@ function render(){
   document.getElementById("t-title-prob").textContent=t.titleProb;
   document.getElementById("t-r32").textContent=t.r32;
   document.getElementById("t-cmp").textContent=t.cmp;
-  document.getElementById("t-cmp-note").textContent="· "+t.cmpNote;
+  const nsrc=(DATA.market_title||{}).n_sources, srcs=(DATA.market_title||{}).sources;
+  document.getElementById("t-cmp-note").textContent="· "+t.cmpNote+(nsrc>1?` · ${LANG==='zh'?nsrc+' 家市场共识':nsrc+'-market consensus'} (${srcs})`:"");
   document.getElementById("search").placeholder=t.search;
   document.getElementById("t-move").textContent=t.move;
   document.getElementById("t-move-note").textContent="· "+t.moveNote;

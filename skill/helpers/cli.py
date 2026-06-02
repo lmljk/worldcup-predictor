@@ -391,14 +391,22 @@ def _cmd_publish(args):
         mk = data_loader.fetch_polymarket_winner(team_filter=teams)
         if "implied_title_prob" in mk:
             market = dict(mk["implied_title_prob"])
-            # blend Kalshi as a second market (average where both quote), then renormalise
+            # multi-market consensus: average every source that quotes a team, then renormalise
+            extra = {"polymarket": market}
             kal = data_loader.fetch_kalshi_title(team_filter=teams)
             if kal:
-                merged = {t: (market.get(t, kal.get(t, 0)) + kal.get(t, market.get(t, 0))) / 2
-                          for t in set(market) | set(kal)}
+                extra["kalshi"] = kal
+            oa = data_loader.fetch_oddsapi_title(team_filter=teams)
+            if oa:
+                extra["the_odds_api"] = oa  # 50+ sportsbooks incl. Pinnacle (paid key)
+            if len(extra) > 1:
+                allt = set().union(*[set(s) for s in extra.values()])
+                merged = {t: sum(s[t] for s in extra.values() if t in s)
+                             / sum(1 for s in extra.values() if t in s) for t in allt}
                 s = sum(merged.values()) or 1
                 market = {t: round(v / s, 5) for t, v in merged.items()}
-                mk["sources"] = "polymarket+kalshi"
+                mk["sources"] = "+".join(extra)
+                mk["n_sources"] = len(extra)
                 mk["implied_title_prob"] = dict(sorted(market.items(), key=lambda x: -x[1]))
             comparison = sorted(
                 ({"team": t, "model": round(model_title.get(t, 0), 4),
