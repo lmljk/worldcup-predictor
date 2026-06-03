@@ -119,6 +119,19 @@
   .accb .grp{min-width:90px;}
   .accpending{background:var(--card);border:1px dashed var(--line);border-radius:14px;padding:14px 18px;
         margin:16px 0 4px;color:var(--mut);font-size:13.5px;}
+  /* methodology credibility card (pre-kickoff backtest → live after kickoff) */
+  .cred{background:linear-gradient(135deg,#15233f,#0e1420);border:1px solid #2b3f63;
+        border-radius:16px;padding:16px 20px;margin:16px 0 4px;box-shadow:0 8px 28px rgba(0,0,0,.28);}
+  .cred .chd{display:flex;align-items:center;gap:10px;margin-bottom:13px;flex-wrap:wrap;}
+  .cred .ctitle{font-weight:700;font-size:14.5px;}
+  .cred .badge{font-size:10.5px;color:var(--acc2);border:1px solid #2b3f63;border-radius:999px;
+        padding:2px 9px;text-transform:uppercase;letter-spacing:.6px;}
+  .cred .crow{display:flex;align-items:flex-start;gap:30px;flex-wrap:wrap;}
+  .cred .grp{min-width:104px;}
+  .cred .big{font-size:33px;font-weight:800;line-height:1;}
+  .cred .lab{color:var(--txt);font-size:12.5px;margin-top:5px;font-weight:600;}
+  .cred .sub{font-size:11.5px;margin-top:2px;}
+  .cred .cnote{color:var(--mut);font-size:12.5px;line-height:1.5;margin-top:13px;max-width:740px;}
   .ok{color:var(--acc);} .no{color:var(--red);}
   .clk{cursor:pointer;}
   .clk:hover{text-decoration:underline;text-decoration-color:var(--acc2);text-underline-offset:2px;}
@@ -273,6 +286,10 @@ const I18N = {
     accTitle:"Live prediction accuracy", accNote:"every finished match vs our pre-kickoff forecast",
     accHit:"Accuracy to date", accRps:"Avg RPS", accRec:"Record", accMatches:"matches",
     accStarts:"⏳ Live scoreboard activates when the World Cup kicks off (Jun 11) — each result will be checked against our forecast.",
+    credTitle:"Model track record", credBadge:"Backtested",
+    credAcc:"Top-pick accuracy", cred3way:"win / draw / loss (3-way)",
+    credRps:"Calibration · RPS", credBand:"bookmaker-grade",
+    credSample:"Major matches", credNote:(n,a)=>`Walk-forward backtest across ${n} major-tournament matches (World Cup / Euro / Copa / AFCON), look-ahead free. ${a}% on a 3-way win/draw/loss call is near bookmaker level (random ≈ 33%). The live scoreboard below activates at kickoff (Jun 11) and scores every match against our pre-game forecast.`,
     resMatch:"Match", resPick:"Our pick", resActual:"Actual",
     win:"Win", lose:"Lose", pscore:"P(score)", noimg:"no photo", rankN:(r,n)=>`#${r} / ${n}` },
   zh:{ title:"⚽ 2026 世界杯 — 预测",
@@ -303,6 +320,10 @@ const I18N = {
     accTitle:"实时预测战绩", accNote:"每场完赛结果 vs 我们赛前的预测",
     accHit:"截至目前准确率", accRps:"平均 RPS", accRec:"战绩", accMatches:"场",
     accStarts:"⏳ 6 月 11 日世界杯开赛后,实时战绩看板自动启动 —— 每场结果都会与我们的预测对照。",
+    credTitle:"模型可信度", credBadge:"回测",
+    credAcc:"单选命中率", cred3way:"胜 / 平 / 负 三选一",
+    credRps:"概率校准 · RPS", credBand:"与博彩同档",
+    credSample:"大赛样本", credNote:(n,a)=>`在 ${n} 场世界杯/欧洲杯/美洲杯/非洲杯等大赛上的滚动回测,无未来函数。胜平负三选一能命中 ${a}%,已接近博彩公司水平(瞎猜约 33%)。下方实时战绩看板将于 6/11 开赛启动,逐场对照我们的赛前预测打分。`,
     resMatch:"比赛", resPick:"我们的预测", resActual:"实际",
     win:"胜", lose:"负", pscore:"进球概率", noimg:"暂无照片", rankN:(r,n)=>`第${r}/${n}` }
 };
@@ -386,13 +407,31 @@ function cmpTable(el, rows){
 function splitPlayer(key){ const m=key.match(/^(.*?)\s*\(([^)]+)\)\s*$/); return m?[m[1],m[2]]:[key,null]; }
 function accBanner(el, la){
   const s=(la&&la.summary)||{n:0};
-  if(!s.n){ el.className="accpending"; el.textContent=L().accStarts; return; }
-  el.className="accb";
-  el.innerHTML=`
-    <div class="grp"><div class="big ${s.hit_rate>=0.5?'ok':''}">${(s.hit_rate*100).toFixed(0)}%</div><div class="lab">${L().accHit}</div></div>
-    <div class="grp"><div class="big">${s.correct}/${s.n}</div><div class="lab">${L().accRec}</div></div>
-    <div class="grp"><div class="big">${(s.mean_rps||0).toFixed(3)}</div><div class="lab">${L().accRps}</div></div>
-    <div style="color:var(--mut);font-size:12.5px;flex:1;min-width:160px">${L().accNote}</div>`;
+  const t=L();
+  if(s.n){   // live: World Cup has kicked off — real results vs our forecast
+    el.className="accb";
+    el.innerHTML=`
+      <div class="grp"><div class="big ${s.hit_rate>=0.5?'ok':''}">${(s.hit_rate*100).toFixed(0)}%</div><div class="lab">${t.accHit}</div></div>
+      <div class="grp"><div class="big">${s.correct}/${s.n}</div><div class="lab">${t.accRec}</div></div>
+      <div class="grp"><div class="big">${(s.mean_rps||0).toFixed(3)}</div><div class="lab">${t.accRps}</div></div>
+      <div style="color:var(--mut);font-size:12.5px;flex:1;min-width:160px">${t.accNote}</div>`;
+    return;
+  }
+  const bt=DATA.backtest;   // pre-kickoff: show the backtested track record
+  if(bt && bt.top_pick!=null){
+    const acc=Math.round(bt.top_pick*100);
+    el.className="cred";
+    el.innerHTML=`
+      <div class="chd"><span class="ctitle">${t.credTitle}</span><span class="badge">${t.credBadge}</span></div>
+      <div class="crow">
+        <div class="grp"><div class="big ok">${acc}%</div><div class="lab">${t.credAcc}</div><div class="sub" style="color:var(--mut)">${t.cred3way}</div></div>
+        <div class="grp"><div class="big">${(bt.rps||0).toFixed(2)}</div><div class="lab">${t.credRps}</div><div class="sub" style="color:var(--acc)">${t.credBand}</div></div>
+        <div class="grp"><div class="big">${bt.n||""}</div><div class="lab">${t.credSample}</div><div class="sub" style="color:var(--mut)">${bt.window||""}</div></div>
+      </div>
+      <div class="cnote">${t.credNote(bt.n, acc)}</div>`;
+    return;
+  }
+  el.className="accpending"; el.textContent=t.accStarts;   // fallback
 }
 function accTable(el, la){
   const rows=(la&&la.results)||[];

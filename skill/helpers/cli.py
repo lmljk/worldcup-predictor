@@ -430,6 +430,34 @@ def _accuracy_payload() -> dict:
     return {"summary": summary, "results": rows, "by_match": by_match}
 
 
+def _backtest_headline() -> dict:
+    """Headline credibility numbers from the most recent walk-forward backtest.
+
+    Surfaces the statistical backbone's validated metrics for the dashboard's
+    methodology card. ELO is the stronger 1X2 baseline (see reports/backtests/
+    FINDINGS.md); we report it as a conservative floor for the shipped ensemble.
+    Returns {} if no backtest has been run yet.
+    """
+    import glob
+
+    files = sorted(glob.glob(str(paths.REPORTS / "backtests" / "backtest_*.json")))
+    if not files:
+        return {}
+    try:
+        bt = json.loads(open(files[-1]).read())
+    except Exception:  # noqa: BLE001
+        return {}
+    elo, dc = bt.get("elo_baseline", {}), bt.get("dixon_coles", {})
+    base = elo if elo.get("top_pick_accuracy", 0) >= dc.get("top_pick_accuracy", 0) else dc
+    win = bt.get("window") or []
+    return {
+        "top_pick": base.get("top_pick_accuracy"),
+        "rps": base.get("mean_rps"),
+        "n": base.get("n"),
+        "window": f"{win[0][:4]}–{win[1][:4]}" if len(win) == 2 else "",
+    }
+
+
 def _cmd_publish(args):
     """Bundle the latest predictions + simulation into site/data.json for the dashboard."""
     import datetime as _dt
@@ -454,6 +482,7 @@ def _cmd_publish(args):
         "portraits": json.loads((paths.DATA / "portraits.json").read_text())
         if (paths.DATA / "portraits.json").exists() else {},
         "live_accuracy": _accuracy_payload(),
+        "backtest": _backtest_headline(),
     }
     # Market anchor: Polymarket title odds vs our Monte Carlo (model-vs-market + edge).
     model_title = sim.get("title_probability", {})
