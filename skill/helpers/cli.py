@@ -440,13 +440,17 @@ def _backtest_headline() -> dict:
     """
     import glob
 
-    files = sorted(glob.glob(str(paths.REPORTS / "backtests" / "backtest_*.json")))
-    if not files:
+    files = glob.glob(str(paths.REPORTS / "backtests" / "backtest_*.json"))
+    runs = []
+    for f in files:
+        try:
+            runs.append(json.loads(open(f).read()))
+        except Exception:  # noqa: BLE001
+            continue
+    if not runs:
         return {}
-    try:
-        bt = json.loads(open(files[-1]).read())
-    except Exception:  # noqa: BLE001
-        return {}
+    # prefer the largest-sample backtest — the most robust headline, not the newest file
+    bt = max(runs, key=lambda r: (r.get("elo_baseline", {}) or r.get("dixon_coles", {})).get("n", 0))
     elo, dc = bt.get("elo_baseline", {}), bt.get("dixon_coles", {})
     base = elo if elo.get("top_pick_accuracy", 0) >= dc.get("top_pick_accuracy", 0) else dc
     win = bt.get("window") or []
