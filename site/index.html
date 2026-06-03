@@ -122,6 +122,58 @@
   .ok{color:var(--acc);} .no{color:var(--red);}
   .clk{cursor:pointer;}
   .clk:hover{text-decoration:underline;text-decoration-color:var(--acc2);text-underline-offset:2px;}
+  /* ---------- elimination tree (出线树) ---------- */
+  .treewrap{background:var(--card);border:1px solid var(--line);border-radius:16px;
+        padding:14px 6px 16px;margin:4px 0 6px;box-shadow:0 8px 28px rgba(0,0,0,.28);overflow-x:auto;}
+  .tree{--g:18px;display:flex;align-items:stretch;justify-content:center;
+        min-height:548px;min-width:max-content;padding:6px 6px;margin:0 auto;}
+  .col{display:flex;flex-direction:column;justify-content:space-around;flex:0 0 auto;
+        width:106px;min-width:106px;position:relative;}
+  .col.r32{width:110px;min-width:110px;}
+  .tie{flex:1 1 auto;display:flex;flex-direction:column;justify-content:center;position:relative;}
+  .chip{display:flex;align-items:center;gap:5px;font-size:12.5px;line-height:1.2;
+        padding:4px 7px;margin:1.5px 0;border-radius:8px;background:var(--card2);
+        border:1px solid var(--line);white-space:nowrap;overflow:hidden;position:relative;}
+  .chip .nm{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;}
+  .chip.win .nm{padding-right:22px;}
+  .chip .flag{width:19px;height:13px;flex:0 0 auto;}
+  .chip.win{background:rgba(55,214,122,.14);border-color:rgba(55,214,122,.5);font-weight:650;color:#dcffe9;}
+  .chip.lose{opacity:.4;}
+  .chip .wp{position:absolute;right:0;top:0;bottom:0;display:flex;align-items:center;
+        padding:0 6px 0 9px;font-size:10px;color:var(--acc);font-variant-numeric:tabular-nums;
+        background:linear-gradient(90deg,transparent,rgba(55,214,122,.16) 36%);}
+  /* connectors: left half lines flow right, right half flow left. space-around keeps
+     each round's ties centered on the previous pair's midpoint, so elbows always meet. */
+  .tree .l .col .tie::after{content:"";position:absolute;top:50%;left:100%;
+        width:var(--g);height:2px;background:var(--line);}
+  .tree .l .col:not(.single) .tie:nth-child(odd)::before{content:"";position:absolute;
+        top:50%;left:calc(100% + var(--g));height:50%;width:2px;background:var(--line);}
+  .tree .l .col:not(.single) .tie:nth-child(even)::before{content:"";position:absolute;
+        bottom:50%;left:calc(100% + var(--g));height:50%;width:2px;background:var(--line);}
+  .tree .r .col .tie::after{content:"";position:absolute;top:50%;right:100%;
+        width:var(--g);height:2px;background:var(--line);}
+  .tree .r .col:not(.single) .tie:nth-child(odd)::before{content:"";position:absolute;
+        top:50%;right:calc(100% + var(--g));height:50%;width:2px;background:var(--line);}
+  .tree .r .col:not(.single) .tie:nth-child(even)::before{content:"";position:absolute;
+        bottom:50%;right:calc(100% + var(--g));height:50%;width:2px;background:var(--line);}
+  .tree .l .col{margin-right:var(--g);}
+  .tree .r .col{margin-left:var(--g);}
+  .half{display:flex;align-items:stretch;}
+  .center{display:flex;flex-direction:column;justify-content:center;align-items:center;
+        flex:0 0 auto;min-width:152px;padding:0 6px;}
+  .champ{display:flex;flex-direction:column;align-items:center;gap:4px;margin-bottom:14px;text-align:center;}
+  .champ .crown{font-size:26px;line-height:1;}
+  .champ .cname{font-size:17px;font-weight:750;display:flex;align-items:center;gap:8px;}
+  .champ .cname .flag{width:30px;height:21px;}
+  .champ .clbl{color:var(--gold);font-size:11px;text-transform:uppercase;letter-spacing:1px;}
+  .finalbox{border:1px solid var(--line);border-radius:10px;padding:6px;background:var(--bg2);width:100%;}
+  .finalbox .ftag{text-align:center;color:var(--mut);font-size:10.5px;text-transform:uppercase;
+        letter-spacing:.8px;margin-bottom:4px;}
+  .rndhead{display:flex;align-items:stretch;}
+  .rndhead .rh{flex:0 0 auto;text-align:center;color:var(--mut);font-size:10.5px;
+        text-transform:uppercase;letter-spacing:.6px;padding-bottom:6px;}
+  .treenote{color:var(--mut);font-size:12px;margin:2px 2px 10px;}
+  @media(max-width:640px){ .chip{font-size:11.5px;padding:3px 6px;} .col{min-width:104px;} }
 </style>
 </head>
 <body>
@@ -151,6 +203,10 @@
   <div id="accbanner"></div>
   <div class="hl" id="highlights"></div>
   <main>
+    <h2 id="h-tree" style="display:none"><span class="bar"></span><span id="t-tree"></span> <span class="note" id="t-tree-note"></span></h2>
+    <div class="treenote" id="tree-sub"></div>
+    <div class="treewrap" id="treewrap" style="display:none"><div class="tree" id="tree"></div></div>
+
     <div class="cols">
       <div>
         <h2><span class="bar"></span><span id="t-title-prob"></span></h2>
@@ -191,6 +247,9 @@
 const I18N = {
   en:{ title:"⚽ World Cup 2026 — Predictions",
     tag:"Market-anchored ensemble — Dixon-Coles + ELO statistical model, blended with the betting market, plus a Monte Carlo simulation of all 104 matches.",
+    tree:"Projected bracket — path to the title", treeNote:"the single most-likely knockout tree",
+    treeSub:"Our model's modal bracket: each group resolved to its likeliest winner/runner-up, every knockout tie won by the model's favourite, climbing to one projected champion. This is the single most-likely path — distinct from the Monte Carlo title odds above, which average over every possible upset.",
+    treeFinal:"Final", treeChamp:"Projected champion",
     updated:u=>"Updated "+u, titleProb:"Title probability", r32:"Reach knockout (R32)",
     cmp:"Title — model vs market", cmpNote:"Polymarket de-vigged · green = model sees more value than the market",
     matches:"Match predictions", mcount:n=>n+" fixtures",
@@ -218,6 +277,9 @@ const I18N = {
     win:"Win", lose:"Lose", pscore:"P(score)", noimg:"no photo", rankN:(r,n)=>`#${r} / ${n}` },
   zh:{ title:"⚽ 2026 世界杯 — 预测",
     tag:"市场锚定集成模型 —— Dixon-Coles 比分模型 + ELO 实力评分,与博彩市场融合,并用蒙特卡洛模拟全部 104 场比赛。",
+    tree:"出线树 — 通往冠军之路", treeNote:"单条最可能的淘汰赛晋级树",
+    treeSub:"模型的「最可能 bracket」:每个小组取最可能的头名/次名出线,每场淘汰赛由模型更看好的一方晋级,一层层决出唯一的预测冠军。这是单条最可能路径 —— 与上方蒙特卡洛夺冠概率不同,后者是对所有可能爆冷取平均。",
+    treeFinal:"决赛", treeChamp:"预测冠军",
     updated:u=>"更新于 "+u, titleProb:"夺冠概率", r32:"晋级淘汰赛(32强)概率",
     cmp:"夺冠 — 模型 vs 市场", cmpNote:"Polymarket 去抽水 · 绿色=模型比市场更看好",
     matches:"逐场预测", mcount:n=>n+" 场",
@@ -263,7 +325,21 @@ const TEAM = {
   "Switzerland":["ch","瑞士"],"Tunisia":["tn","突尼斯"],"Turkey":["tr","土耳其"],
   "United States":["us","美国"],"Uruguay":["uy","乌拉圭"],"Uzbekistan":["uz","乌兹别克斯坦"]
 };
-let LANG = localStorage.getItem("wc_lang") || "en";
+/* short codes for the compact bracket chips (EN); zh uses the short native name */
+const CODE = {
+  "Algeria":"ALG","Argentina":"ARG","Australia":"AUS","Austria":"AUT","Belgium":"BEL",
+  "Bosnia and Herzegovina":"BIH","Brazil":"BRA","Canada":"CAN","Cape Verde":"CPV",
+  "Colombia":"COL","Croatia":"CRO","Curaçao":"CUW","Czech Republic":"CZE","DR Congo":"COD",
+  "Ecuador":"ECU","Egypt":"EGY","England":"ENG","France":"FRA","Germany":"GER","Ghana":"GHA",
+  "Haiti":"HAI","Iran":"IRN","Iraq":"IRQ","Ivory Coast":"CIV","Italy":"ITA","Japan":"JPN",
+  "Jordan":"JOR","Mexico":"MEX","Morocco":"MAR","Netherlands":"NED","New Zealand":"NZL",
+  "Norway":"NOR","Panama":"PAN","Paraguay":"PAR","Peru":"PER","Portugal":"POR","Qatar":"QAT",
+  "Saudi Arabia":"KSA","Scotland":"SCO","Senegal":"SEN","South Africa":"RSA","South Korea":"KOR",
+  "Spain":"ESP","Sweden":"SWE","Switzerland":"SUI","Tunisia":"TUN","Turkey":"TUR",
+  "United States":"USA","Uruguay":"URU","Uzbekistan":"UZB"
+};
+let LANG = (new URLSearchParams(location.search).get("lang")) || localStorage.getItem("wc_lang") || "en";
+if(LANG!=="en"&&LANG!=="zh") LANG="en";
 let DATA = null;
 function L(){ return I18N[LANG]; }
 function pct(x){ return (x*100).toFixed(1)+"%"; }
@@ -419,6 +495,43 @@ function highlights(d){
       <div class="val">${tm?flag(tm):""}${nm}</div><div class="sub">${L().topscorer} ${pct(gbTop[1])}</div></div>`; }
   el.innerHTML=html;
 }
+/* ---------- elimination tree (出线树) ---------- */
+function brkLabel(team){ return LANG==="zh" ? tName(team) : (CODE[team]||team); }
+function brkChip(team, isWin, wp){
+  if(!team) return "";
+  const cls = isWin ? " win" : " lose";
+  const pc = (isWin && wp!=null) ? `<span class="wp">${Math.round(wp*100)}%</span>` : "";
+  return `<div class="chip${cls}" title="${esc(tName(team))}">${flag(team)}<span class="nm">${brkLabel(team)}</span>${pc}</div>`;
+}
+function brkTie(m){
+  return `<div class="tie">${brkChip(m.a, m.winner===m.a, m.p)}${brkChip(m.b, m.winner===m.b, m.p)}</div>`;
+}
+function brkCol(matches, cls){
+  return `<div class="col ${cls}">${matches.map(brkTie).join("")}</div>`;
+}
+function bracketTree(bk){
+  const wrap=document.getElementById("treewrap"),
+        host=document.getElementById("tree"),
+        head=document.getElementById("h-tree");
+  if(!bk || !bk.rounds || !bk.rounds.length){ wrap.style.display="none"; head.style.display="none"; return; }
+  head.style.display=""; wrap.style.display="";
+  const byName={}; bk.rounds.forEach(r=>byName[r.round]=r.matches||[]);
+  const half=(name,side)=>{ const m=byName[name]||[], n=m.length; return side==="l"?m.slice(0,n/2):m.slice(n/2); };
+  const order=["R32","R16","QF","SF"];               // left→center; SF = 1 tie per side
+  const colHTML=(rn,side)=>{ const ms=half(rn,side);
+        const cls=(rn==="R32"?"r32 ":"")+(ms.length===1?"single":""); return brkCol(ms,cls); };
+  const leftCols  = order.map(rn=>colHTML(rn,"l")).join("");
+  const rightCols = order.slice().reverse().map(rn=>colHTML(rn,"r")).join("");
+  const fin=(byName["Final"]||[])[0]||{}, t=L(), champ=bk.champion;
+  const center=`<div class="center">
+     <div class="champ"><div class="crown">🏆</div>
+       <div class="cname">${flag(champ)}<span>${tName(champ)}</span></div>
+       <div class="clbl">${t.treeChamp}</div></div>
+     <div class="finalbox"><div class="ftag">${t.treeFinal}</div>
+       ${brkChip(fin.a, fin.winner===fin.a, fin.p)}
+       ${brkChip(fin.b, fin.winner===fin.b, fin.p)}</div></div>`;
+  host.innerHTML=`<div class="half l">${leftCols}</div>${center}<div class="half r">${rightCols}</div>`;
+}
 function render(){
   document.getElementById("lang-en").className=LANG==="en"?"on":"";
   document.getElementById("lang-zh").className=LANG==="zh"?"on":"";
@@ -445,8 +558,12 @@ function render(){
   document.getElementById("t-foot").innerHTML=t.foot+' · <a href="https://github.com/rrclaw/worldcup-predictor" style="color:var(--acc2)">GitHub</a>';
   if(!DATA){ document.getElementById("matches").innerHTML='<p class="err">No data yet.</p>'; return; }
   document.getElementById("updated").textContent=t.updated(DATA.generated_at||"");
+  document.getElementById("t-tree").textContent=t.tree;
+  document.getElementById("t-tree-note").textContent="· "+t.treeNote;
+  document.getElementById("tree-sub").textContent=t.treeSub;
   const sim=DATA.simulation||{};
   highlights(DATA);
+  bracketTree(DATA.bracket);
   probTable(document.getElementById("title"), sim.title_probability, 16);
   probTable(document.getElementById("r32"), sim.reach_knockout_R32, 16);
   accBanner(document.getElementById("accbanner"), DATA.live_accuracy);

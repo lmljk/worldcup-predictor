@@ -101,6 +101,14 @@ def _cmd_predict(args):
             for name, p in list(gb.items())[:6]:
                 print(f"  {name:<34} {p*100:5.1f}%")
 
+        # deterministic most-likely bracket (出线树) — single projected path to a champion
+        from ..sim import bracket as bracketmod
+        bk = bracketmod.project(model, fixtures)
+        (paths.report_dir() / "bracket.json").write_text(
+            json.dumps(bk, indent=2, ensure_ascii=False)
+        )
+        print(f"projected bracket champion: {bk['champion']}")
+
     # detail data for the dashboard's team/player search views
     tf, sq = _detail_payload(model, results, fixtures, squads, sim, talent)
     (paths.report_dir() / "team_factors.json").write_text(json.dumps(tf, ensure_ascii=False))
@@ -433,12 +441,14 @@ def _cmd_publish(args):
         print(f"no predictions at {preds_f} — run `predict --all --simulate` first", file=sys.stderr)
         sys.exit(1)
     sim = json.loads(sim_f.read_text()) if sim_f.exists() else {}
+    bracket_f = rep / "bracket.json"
     tf_f, sq_f = rep / "team_factors.json", rep / "squads_shares.json"
     data = {
         "generated_at": _dt.datetime.now().isoformat(timespec="minutes"),
         "report_date": rep.name,
         "predictions": json.loads(preds_f.read_text()),
         "simulation": sim,
+        "bracket": json.loads(bracket_f.read_text()) if bracket_f.exists() else {},
         "team_factors": json.loads(tf_f.read_text()) if tf_f.exists() else {},
         "squads": json.loads(sq_f.read_text()) if sq_f.exists() else {},
         "portraits": json.loads((paths.DATA / "portraits.json").read_text())
