@@ -190,6 +190,20 @@ Default `train_years` 8→3. (Note: this is a hard window with gentle decay — 
   * **Coach ability + tactical-style counter**: no free coach-rating dataset exists; tactical
     "克制" would be fabricated — deliberately not implemented.
 
+## Run 11 — BRACKET BUG FIX (knockout tree adjacency)
+
+Bug (user-spotted): the structured bracket paired R32 matches *sequentially* into the R16
+(matches 1&2 → R16, 3&4 → R16…), which is NOT the official tree. It wrongly put Group-J winner
+(Argentina) and Group-K winner (Portugal) in the *same Round of 16*.
+
+Fix: encoded the real 2026 bracket from the official match tree (R32 = matches 73-88; R16
+89-96 with the published non-sequential feeders, e.g. M89 = W74 vs W77; QF 97-100; SF; Final).
+Verified: Argentina (W-J, match 86 → R16 match 95) and Portugal (W-K, match 87 → R16 match 96)
+now meet only at QF match 100 — correct. Rebuilt the Monte Carlo knockout to walk this explicit
+tree (`_R16_PAIRS/_QF_PAIRS/_SF_PAIRS`) instead of adjacent pairs. Sanity sums hold (title 1.0,
+R32 32, QF 8, final 2). Title odds shift to reflect real draw quadrants (e.g. Argentina's weak
+Group J + soft quadrant lifts its model prob; market edge still flags any overrating).
+
 ## Open items
 - **Historical raw-market 1X2 baseline** for internationals isn't available free at scale
   (The Odds API soccer/historical is paid; football-data.co.uk is club leagues only). Two

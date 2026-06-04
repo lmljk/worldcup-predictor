@@ -58,26 +58,37 @@ OFFICIAL_GROUPS = {
 }
 _GI = {c: i for i, c in enumerate("ABCDEFGHIJKL")}
 
-# Official Round-of-32 slot map (16 matches, bracket order). Each slot is
-# ('W'|'RU', group) for winners/runners-up or ('3RD', eligible_groups) for the
-# 8 third-place slots. Source: 2026 FIFA World Cup knockout-stage bracket.
+# Official Round-of-32 slot map — match order 73..88 (index 0..15). Each slot is
+# ('W'|'RU', group) for winners/runners-up or ('3RD', eligible_groups) for the 8
+# third-place slots. Source: 2026 FIFA World Cup official knockout bracket.
 _R32 = [
-    (("RU", "A"), ("RU", "B")), (("W", "C"), ("RU", "F")),
-    (("W", "E"), ("3RD", "ABCDF")), (("W", "F"), ("RU", "C")),
-    (("RU", "E"), ("RU", "I")), (("W", "I"), ("3RD", "CDFGH")),
-    (("W", "A"), ("3RD", "CEFHI")), (("W", "L"), ("3RD", "EHIJK")),
-    (("W", "G"), ("3RD", "AEHIJ")), (("W", "D"), ("3RD", "BEFIJ")),
-    (("W", "H"), ("RU", "J")), (("RU", "K"), ("RU", "L")),
-    (("W", "B"), ("3RD", "EFGIJ")), (("RU", "D"), ("RU", "G")),
-    (("W", "J"), ("RU", "H")), (("W", "K"), ("3RD", "DEIJL")),
+    (("RU", "A"), ("RU", "B")),       # 73
+    (("W", "E"), ("3RD", "ABCDF")),   # 74
+    (("W", "F"), ("RU", "C")),        # 75
+    (("W", "C"), ("RU", "F")),        # 76
+    (("W", "I"), ("3RD", "CDFGH")),   # 77
+    (("RU", "E"), ("RU", "I")),       # 78
+    (("W", "A"), ("3RD", "CEFHI")),   # 79
+    (("W", "L"), ("3RD", "EHIJK")),   # 80
+    (("W", "D"), ("3RD", "BEFIJ")),   # 81
+    (("W", "G"), ("3RD", "AEHIJ")),   # 82
+    (("RU", "K"), ("RU", "L")),       # 83
+    (("W", "H"), ("RU", "J")),        # 84
+    (("W", "B"), ("3RD", "EFGIJ")),   # 85
+    (("W", "J"), ("RU", "H")),        # 86
+    (("W", "K"), ("3RD", "DEIJL")),   # 87
+    (("RU", "D"), ("RU", "G")),       # 88
 ]
-# flattened third-slot positions (0..31) and their eligible group-index sets
-_THIRD_POS, _THIRD_ELIG = [], []
-for _mi, (_h, _a) in enumerate(_R32):
-    for _si, _slot in enumerate((_h, _a)):
-        if _slot[0] == "3RD":
-            _THIRD_POS.append(_mi * 2 + _si)
-            _THIRD_ELIG.append({_GI[c] for c in _slot[1]})
+# Bracket tree (winners of these R32 match indices meet in each R16 match 89..96),
+# then R16-winner indices into QF, etc. This is the real (non-sequential) adjacency.
+_R16_PAIRS = [(1, 4), (0, 2), (3, 5), (6, 7), (10, 11), (8, 9), (13, 15), (12, 14)]
+_QF_PAIRS = [(0, 1), (4, 5), (2, 3), (6, 7)]   # indices into the 8 R16 winners
+_SF_PAIRS = [(0, 1), (2, 3)]                   # indices into the 4 QF winners
+_F_PAIR = [(0, 1)]                             # indices into the 2 SF winners
+# the 8 third-place slots: (R32 match index, eligible group-index set)
+_THIRD_MATCHES = [(_mi, {_GI[c] for c in _a[1]})
+                  for _mi, (_h, _a) in enumerate(_R32) if _a[0] == "3RD"]
+_THIRD_ELIG = [e for _, e in _THIRD_MATCHES]
 
 
 def _assign_thirds(qual: tuple) -> list:
@@ -192,46 +203,12 @@ def run(model, fixtures: pd.DataFrame, n: int = 50000, seed: int = 0,
     ru_ids = top2_ids[:, 1::2]    # (n,12) runners-up
 
     rows = np.arange(n)
-    if official:
-        # structured bracket: place teams into the official R32 slots
-        cur = np.empty((n, 32), dtype=int)
-        for mi, (h, a) in enumerate(_R32):
-            for si, slot in enumerate((h, a)):
-                pos = mi * 2 + si
-                if slot[0] == "W":
-                    cur[:, pos] = win_ids[:, _GI[slot[1]]]
-                elif slot[0] == "RU":
-                    cur[:, pos] = ru_ids[:, _GI[slot[1]]]
-                # '3RD' slots filled below
-        # assign qualifying thirds to the 8 third-slots (memoised by qualifying set)
-        cache = {}
-        slot_group = np.empty((n, len(_THIRD_POS)), dtype=int)
-        qlist = qual.tolist()
-        for i in range(n):
-            key = tuple(qlist[i])
-            a = cache.get(key)
-            if a is None:
-                a = cache[key] = _assign_thirds(key)
-            slot_group[i] = a
-        third_fill = np.take_along_axis(third_ids, slot_group, axis=1)  # (n,8)
-        cur[:, _THIRD_POS] = third_fill
-    else:
-        third_adv = third_ids[rows[:, None], torder[:, :8]]
-        advancers = np.concatenate([top2_ids, third_adv], axis=1)
-        perm = rng.random(advancers.shape).argsort(axis=1)
-        cur = np.take_along_axis(advancers, perm, axis=1)
-
-    np.add.at(reached["R32"], cur.ravel(), 1)
-
     # total goals each team scores across the tournament (group + every KO match played)
     tour_goals = gf.copy()
 
-    # knockout: structured bracket (cur is in official R32 slot order, adjacent-pair tree)
-    stage_names = ["R16", "QF", "SF", "final", "champion"]
-    for stage in stage_names:
-        k = cur.shape[1]
-        home = cur[:, 0:k:2]
-        away = cur[:, 1:k:2]
+    def _play(home, away):
+        """One knockout round, vectorised: sample scorelines, resolve (penalties via a
+        strength-weighted coin), accumulate goals, return winner team-ids (n, k)."""
         lam = np.exp(inter + atk[home] - dfc[away])
         mu = np.exp(inter + atk[away] - dfc[home])
         hg = rng.poisson(lam)
@@ -239,12 +216,60 @@ def run(model, fixtures: pd.DataFrame, n: int = 50000, seed: int = 0,
         ri = np.repeat(np.arange(n), home.shape[1])
         np.add.at(tour_goals, (ri, home.ravel()), hg.ravel())
         np.add.at(tour_goals, (ri, away.ravel()), ag.ravel())
-        p_home = lam / (lam + mu)
-        coin = rng.random(hg.shape) < p_home
-        home_wins = (hg > ag) | ((hg == ag) & coin)
-        winners = np.where(home_wins, home, away)  # (n, k/2)
-        np.add.at(reached[stage], winners.ravel(), 1)
-        cur = winners
+        coin = rng.random(hg.shape) < (lam / (lam + mu))
+        hw = (hg > ag) | ((hg == ag) & coin)
+        return np.where(hw, home, away)
+
+    if official:
+        # build R32 home/away (n,16) from the official slot map (match order 73..88)
+        home16 = np.empty((n, 16), dtype=int)
+        away16 = np.empty((n, 16), dtype=int)
+        for mi, (h, a) in enumerate(_R32):
+            for slot, dst in ((h, home16), (a, away16)):
+                if slot[0] == "W":
+                    dst[:, mi] = win_ids[:, _GI[slot[1]]]
+                elif slot[0] == "RU":
+                    dst[:, mi] = ru_ids[:, _GI[slot[1]]]
+        # qualifying thirds → the 8 eligible third-slots (memoised by qualifying set)
+        cache = {}
+        slot_group = np.empty((n, len(_THIRD_MATCHES)), dtype=int)
+        qlist = qual.tolist()
+        for i in range(n):
+            key = tuple(qlist[i])
+            asg = cache.get(key)
+            if asg is None:
+                asg = cache[key] = _assign_thirds(key)
+            slot_group[i] = asg
+        third_fill = np.take_along_axis(third_ids, slot_group, axis=1)  # (n,8)
+        for j, (mi, _e) in enumerate(_THIRD_MATCHES):
+            away16[:, mi] = third_fill[:, j]
+
+        np.add.at(reached["R32"], home16.ravel(), 1)
+        np.add.at(reached["R32"], away16.ravel(), 1)
+        # walk the real bracket tree (NOT sequential pairs)
+        w32 = _play(home16, away16)                                   # 16 → reach R16
+        np.add.at(reached["R16"], w32.ravel(), 1)
+        a, b = zip(*_R16_PAIRS)
+        w16 = _play(w32[:, list(a)], w32[:, list(b)])                 # 8 → reach QF
+        np.add.at(reached["QF"], w16.ravel(), 1)
+        a, b = zip(*_QF_PAIRS)
+        qf = _play(w16[:, list(a)], w16[:, list(b)])                  # 4 → reach SF
+        np.add.at(reached["SF"], qf.ravel(), 1)
+        a, b = zip(*_SF_PAIRS)
+        sf = _play(qf[:, list(a)], qf[:, list(b)])                    # 2 → finalists
+        np.add.at(reached["final"], sf.ravel(), 1)
+        champ = _play(sf[:, [0]], sf[:, [1]])                         # champion
+        np.add.at(reached["champion"], champ.ravel(), 1)
+    else:
+        # fallback (non-official draw): random single-elim bracket, sequential pairs
+        third_adv = third_ids[rows[:, None], torder[:, :8]]
+        advancers = np.concatenate([top2_ids, third_adv], axis=1)
+        cur = np.take_along_axis(advancers, rng.random(advancers.shape).argsort(axis=1), axis=1)
+        np.add.at(reached["R32"], cur.ravel(), 1)
+        for stage in ("R16", "QF", "SF", "final", "champion"):
+            k = cur.shape[1]
+            cur = _play(cur[:, 0:k:2], cur[:, 1:k:2])
+            np.add.at(reached[stage], cur.ravel(), 1)
 
     # ---- Golden Boot: allocate each team's tournament goals to its players ----
     golden_boot = {}
