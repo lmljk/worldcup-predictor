@@ -47,7 +47,25 @@ def _weight(p: dict) -> float:
     else:
         form_mult = min(1.5, 1.0 + 0.06 * rg)   # hot boost
     pen_mult = 1.15 if p.get("pen_taker") else 1.0
-    return base * form_mult * pen_mult
+    ovr = p.get("fc_ovr")  # EA FC25 ability (validated to add signal for goals)
+    ovr_mult = min(1.30, max(0.80, 1.0 + 0.10 * ((ovr - 78) / 8))) if ovr else 1.0
+    league_mult = _league_mult(p.get("league", ""))  # league level
+    return base * form_mult * pen_mult * ovr_mult * league_mult
+
+
+# League strength tiers (FC25 League names, substring match) for the awards layer.
+TOP5_LEAGUES = ("premier league", "laliga", "la liga", "bundesliga", "serie a", "ligue 1")
+TIER2_LEAGUES = ("eredivisie", "liga portugal", "primeira", "saudi", "mls", "championship",
+                 "süper lig", "super lig", "belgian", "jupiler", "scottish")
+
+
+def _league_mult(league: str) -> float:
+    l = (league or "").lower()
+    if any(k in l for k in TOP5_LEAGUES):
+        return 1.06
+    if any(k in l for k in TIER2_LEAGUES):
+        return 1.0
+    return 0.95 if l else 1.0
 
 
 def goal_shares(squad: list[dict]) -> list[tuple[str, str, float]]:

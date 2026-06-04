@@ -162,6 +162,34 @@ those very UCL/league matches and feed the squad-talent factor. Leaning harder o
 the talent weight, but that's a current-snapshot prior (no historical club-Elo → not
 walk-forward validatable), so it's left modest (0.10).
 
+## Run 10 — EA FC25 ratings, 3-year window: TESTED, both ADOPTED
+
+(EA Sports **FC 26** releases ~Sept 2026, *after* the World Cup → FC 25 is the latest game.)
+
+**FC25 squad ratings (adopted).** Free dataset (16k players, OVR + 6 categories + 30 sub-attrs
++ position/league). Per team we build a projected best XI (4-3-3 by OVR) and compute attack
+(forwards weighted on attacking sub-attrs) / defence (defenders+GK on defensive) / overall.
+Sanity: France #1 (85.5), Brazil best defence (80.4) — sensible. Two uses:
+  * **Team prior**: blended with clubelo into the attack/defence nudge, using FC's attack/
+    defence *split* (attacking squads boost goals, defensive squads concede less). Pushes
+    France title 9.7%→10.9% (gap −9.5%→−5.7% across talent+FC).
+  * **Player awards**: FC OVR **passed a predictive test** — adding it to prior-goals lifts
+    player-goal R² 0.375→0.388 (Δ+0.013, ~6× the age effect). Folded into goal share with a
+    league-tier multiplier (top-5 leagues ×1.06). Mbappé (OVR 91) → 28% of France's goals.
+  * Still a current-snapshot prior (no historical FC ratings → not walk-forward validatable),
+    so weights kept modest.
+
+**3-year training window (adopted).** Backtest: 8-year history RPS 0.1923 → **3-year 0.1903**
+(better). Removing stale squad/manager-era data helps; all 48 teams still have ≥8 matches.
+Default `train_years` 8→3. (Note: this is a hard window with gentle decay — distinct from the
+*steeper-decay* test in Run 9, which hurt.)
+
+**Rejected / infeasible:**
+  * **Exclude friendlies (B-squad proxy)**: hurts (RPS 0.1923→0.1991); friendlies carry real
+    signal. True B-squad exclusion needs historical lineups (martj42 has none) — not possible.
+  * **Coach ability + tactical-style counter**: no free coach-rating dataset exists; tactical
+    "克制" would be fabricated — deliberately not implemented.
+
 ## Open items
 - **Historical raw-market 1X2 baseline** for internationals isn't available free at scale
   (The Odds API soccer/historical is paid; football-data.co.uk is club leagues only). Two

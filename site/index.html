@@ -689,6 +689,7 @@ function openTeam(team){
       <li><b>${t.sElo}:</b> ${tf.elo} · ${t.rankN(rankOf(tf.elo,"elo"),N)} — ${LANG==='zh'?'基于全部国际比赛历史的实力评分(预测的主因子)':'strength from full international match history (the dominant input)'}</li>
       <li><b>${t.sAtk}/${t.sDef}:</b> ${tf.attack} / ${tf.defence} — ${LANG==='zh'?'Dixon-Coles 进攻/防守系数(近 8 年,时间加权)':'Dixon-Coles attack/defence (last 8 yrs, time-weighted)'}</li>
       ${tf.talent!=null?`<li><b>${LANG==='zh'?'阵容天赋':'Squad talent'}:</b> ${tf.talent} · ${t.rankN(rankOf(tf.talent,"talent"),Object.keys(DATA.team_factors).length)} — ${LANG==='zh'?'球员所在俱乐部 Elo 均值(clubelo,身价代理,修正纯战绩低估)':'mean club Elo of the squad (clubelo, a market-value proxy that corrects results-only bias)'}</li>`:""}
+      ${tf.fc_overall!=null?`<li><b>${LANG==='zh'?'EA FC25 首发能力':'EA FC25 XI rating'}:</b> ${LANG==='zh'?'综合':'OVR'} ${tf.fc_overall} · ${LANG==='zh'?'进攻':'ATK'} ${tf.fc_attack} · ${LANG==='zh'?'防守':'DEF'} ${tf.fc_defence} — ${LANG==='zh'?'预测首发11人能力,前锋侧重进攻子项/后卫侧重防守':'projected XI ability — forwards weighted on attack, defenders on defence'}</li>`:""}
       ${tf.host?`<li><b>${LANG==='zh'?'东道主':'Host'}:</b> ${LANG==='zh'?'享主场优势(美/加/墨)':'home advantage applied'}</li>`:""}
     </ul>
     <div class="sect">${t.secMatches}</div>${ms}`;
@@ -712,7 +713,7 @@ function openPlayer(name,team){
     <button class="x" onclick="closeModal()">×</button>
     <div class="dh">
       ${portraitImg(name)}
-      <div><h3>${name}</h3><div class="role">${flag(team).replace('class="flag"','class="flag" style="width:20px;height:13px"')} ${tName(team)} · ${p.pos}${p.age?` · ${p.age}${LANG==='zh'?'岁':'y'}`:""}${p.pen_taker?` · <span style="color:var(--gold)">⚽ ${t.penTaker}</span>`:""}</div></div></div>
+      <div><h3>${name}</h3><div class="role">${flag(team).replace('class="flag"','class="flag" style="width:20px;height:13px"')} ${tName(team)} · ${p.pos}${p.age?` · ${p.age}${LANG==='zh'?'岁':'y'}`:""}${p.fc_ovr?` · <span style="color:var(--acc2)">FC ${p.fc_ovr}</span>`:""}${p.pen_taker?` · <span style="color:var(--gold)">⚽ ${t.penTaker}</span>`:""}</div></div></div>
     <div class="evalbox">${ev}</div>
     <div class="sect">${t.secOverall}</div>
     <div class="statgrid">
@@ -724,6 +725,7 @@ function openPlayer(name,team){
       <li><b>${t.sRate}:</b> ${p.rate} — ${zh?'生涯国家队进球率(goals/caps,主因子)':'career international scoring rate (goals/caps)'}</li>
       <li><b>${t.sRecent}:</b> ${p.recent_goals??0} — ${zh?'近2年国家队进球(状态加成,来自 goalscorers 数据)':'goals for country in last 2 years (form boost, from goalscorers data)'}</li>
       <li><b>${zh?'点球主罚':'Penalty duties'}:</b> ${p.pen_taker?(zh?'是 — 进球占比加成':'yes — share boosted'):(zh?'否':'no')}</li>
+      ${p.fc_ovr?`<li><b>${zh?'能力 / 联赛':'Ability / league'}:</b> EA FC25 ${p.fc_ovr}${p.league?' · '+p.league:''} — ${zh?'能力值(回测有效)+ 联赛等级,提升金靴/进球估计':'FC25 rating (backtested to add signal) + league tier sharpen the awards estimate'}</li>`:""}
       <li><b>${zh?'位置先验':'Position prior'}:</b> ${p.pos} · ${zh?'球队进攻强度决定可分配总进球(ELO+Dixon-Coles)':'team attack sets goals to share (ELO + Dixon-Coles)'}</li>
     </ul>
     <div class="sect">${t.secMatches}</div>

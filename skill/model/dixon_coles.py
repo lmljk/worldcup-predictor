@@ -66,7 +66,7 @@ def fit(
     xi: float = 0.0010,
     ridge: float = 0.01,
     min_matches: int = 8,
-    train_years: float = 8.0,
+    train_years: float = 3.0,
     importance: float = 0.0,
 ) -> DCModel:
     """Weighted MLE on matches strictly before `as_of`. `xi` is daily decay.

@@ -46,12 +46,26 @@ def _cmd_predict(args):
 
     # squad-talent prior (clubelo): nudge strength toward roster quality the
     # results-based model misses (e.g. France). Transparent, surfaced as a factor.
-    talent = {}
+    talent, fc_team, fc_player = {}, {}, {}
     try:
-        from ..model import talent as talentmod
+        from ..model import fcratings, talent as talentmod
         talent = talentmod.squad_talent(squads, data_loader.fetch_club_elo())
-        model.attack, model.defence = talentmod.adjusted_strength(
-            model.attack, model.defence, talent, weight=TALENT_WEIGHT)
+        try:
+            fc_team, fc_player = fcratings.team_ratings(squads)
+            import re as _re
+            import unicodedata as _u
+            _nm = lambda s: _re.sub(r"[^a-z]", "", _u.normalize("NFD", str(s)).encode("ascii", "ignore").decode().lower())
+            fc_lookup = {(t, _nm(n)): v for (t, n), v in fc_player.items()}
+            for tm, ps in squads.items():
+                for p in ps:
+                    v = fc_lookup.get((tm, _nm(p["name"])))
+                    if v:
+                        p["fc_ovr"] = v["ovr"]
+                        p["league"] = v.get("league") or p.get("league")
+        except Exception as e:  # noqa: BLE001 — FC25 ratings optional
+            print(f"[fc25 skipped] {e}", file=sys.stderr)
+        model.attack, model.defence = talentmod.combined_adjust(
+            model.attack, model.defence, talent, fc_team, weight=TALENT_WEIGHT)
     except Exception as e:  # noqa: BLE001 — talent is an optional enhancement
         print(f"[talent skipped] {e}", file=sys.stderr)
 
@@ -110,17 +124,18 @@ def _cmd_predict(args):
         print(f"projected bracket champion: {bk['champion']}")
 
     # detail data for the dashboard's team/player search views
-    tf, sq = _detail_payload(model, results, fixtures, squads, sim, talent)
+    tf, sq = _detail_payload(model, results, fixtures, squads, sim, talent, fc_team)
     (paths.report_dir() / "team_factors.json").write_text(json.dumps(tf, ensure_ascii=False))
     (paths.report_dir() / "squads_shares.json").write_text(json.dumps(sq, ensure_ascii=False))
 
 
-def _detail_payload(model, results, fixtures, squads, sim, talent=None):
+def _detail_payload(model, results, fixtures, squads, sim, talent=None, fc_team=None):
     """Per-team model factors + per-player goal shares — powers the search detail views."""
     from ..model.elo import compute_elo_history
     from ..model.players import goal_shares, player_rate
 
     talent = talent or {}
+    fc_team = fc_team or {}
     _, elo = compute_elo_history(results)
     teams = sorted(set(fixtures["home_team"]) | set(fixtures["away_team"]))
     sim = sim or {}
@@ -137,6 +152,9 @@ def _detail_payload(model, results, fixtures, squads, sim, talent=None):
             "attack": round(model.attack.get(t, 0.0), 3),
             "defence": round(model.defence.get(t, 0.0), 3),
             "talent": tl.get("talent"), "talent_z": tl.get("talent_z"),
+            "fc_overall": fc_team.get(t, {}).get("fc_overall"),
+            "fc_attack": fc_team.get(t, {}).get("fc_attack"),
+            "fc_defence": fc_team.get(t, {}).get("fc_defence"),
             "avg_age": round(sum(team_ages) / len(team_ages), 1) if team_ages else None,
             "host": t in hosts,
             "title": tp.get(t), "advance": adv.get(t), "r32": r32.get(t), "final": fin.get(t),
@@ -150,7 +168,7 @@ def _detail_payload(model, results, fixtures, squads, sim, talent=None):
         sq[t] = [{"name": p["name"], "pos": p["pos"], "caps": p["caps"], "goals": p["goals"],
                   "rate": round(player_rate(p), 3), "share": round(share.get(p["name"], 0.0), 4),
                   "recent_goals": p.get("recent_goals", 0), "pen_taker": bool(p.get("pen_taker")),
-                  "age": p.get("age")}
+                  "age": p.get("age"), "fc_ovr": p.get("fc_ovr"), "league": p.get("league")}
                  for p in s]
     return tf, sq
 

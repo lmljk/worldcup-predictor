@@ -60,6 +60,7 @@ def run(
     majors_only: bool = True,
     xi: float = 0.0010,
     importance: float = 0.0,
+    train_years: float = 8.0,
     verbose: bool = True,
 ) -> dict:
     hist, _ = compute_elo_history(results)
@@ -81,7 +82,8 @@ def run(
         as_of = r.date
         if model is None or (as_of - model_asof).days >= refit_days:
             try:
-                model = dc.fit(results, as_of=as_of, xi=xi, importance=importance)
+                model = dc.fit(results, as_of=as_of, xi=xi, importance=importance,
+                               train_years=train_years)
                 model_asof = as_of
             except ValueError:
                 skipped += 1

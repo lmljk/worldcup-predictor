@@ -39,3 +39,6 @@ data/portraits.json
 
 # accumulating probability snapshots (movement tracking)
 data/history.json
+
+# EA FC25 dataset (regenerable)
+data/fc25_players.csv

@@ -82,3 +82,21 @@ def adjusted_strength(attack: dict, defence: dict, talent: dict, weight: float =
             atk[tm] += weight * z
             dfc[tm] += weight * z
     return atk, dfc
+
+
+def combined_adjust(attack: dict, defence: dict, clubelo_talent: dict,
+                    fc_ratings: dict, weight: float = 0.10):
+    """Blend two quality proxies (clubelo club-Elo + EA FC25 squad rating) into the
+    attack/defence nudge. FC25's attack/defence split lets us nudge each side separately:
+    attacking-strong squads boost their goal rate, defensively-strong squads concede less."""
+    atk, dfc = dict(attack), dict(defence)
+    for tm in atk:
+        cz = clubelo_talent.get(tm, {}).get("talent_z", 0.0)
+        fc = fc_ratings.get(tm, {})
+        fo = fc.get("fc_overall_z")
+        overall_z = (cz + fo) / 2 if fo is not None else cz  # consensus of the two proxies
+        fa = fc.get("fc_attack_z", overall_z)
+        fd = fc.get("fc_defence_z", overall_z)
+        atk[tm] += weight * (0.5 * overall_z + 0.5 * fa)
+        dfc[tm] += weight * (0.5 * overall_z + 0.5 * fd)
+    return atk, dfc
