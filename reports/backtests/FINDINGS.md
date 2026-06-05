@@ -414,3 +414,55 @@ Effect (coverage 0, w=0.60): Argentina 22.5% → **14.1%** (toward, not to, mark
 still sums to 1. Deliberately does **not** close the gap (Run 3 principle: erasing it = reproducing
 the market). Dashboard headline + team cards show the blended figure with a "60% market-anchored"
 note; raw model remains one panel away.
+
+## Run 19 — weather (aggregate effect on goals): TESTED, NOT adopted
+
+User challenge: deferring weather to the in-tournament review loop "because forecasts only reach
+~16 days out" conflates *forecasting* with *validation*. For any past match we can fetch the
+weather that ACTUALLY occurred (Open-Meteo ERA5 archive, free, no key, look-ahead free) and test
+whether it moved the result — the backtest that was missing.
+
+Method: geocoded host cities, joined the actual match-day weather (max temp / precip / wind) to
+**1642 major-tournament matches** (1990+).
+
+| max temp | n | avg goals | | precip | n | avg goals |
+|----------|---|-----------|-|--------|---|-----------|
+| 10-18°C | 265 | 2.555 | | dry | 925 | 2.484 |
+| 18-24°C | 454 | 2.579 | | light | 400 | 2.487 |
+| 24-28°C | 382 | 2.421 | | moderate | 199 | 2.658 |
+| 28-32°C | 347 | 2.499 | | heavy | 118 | 2.492 |
+| 32°C+ | 178 | 2.506 | | | | |
+
+Pearson r (vs total goals): **tmax −0.003, precip −0.002, wind −0.001** — all ≈ 0. Hot (≥30°C)
+2.490 vs mild (14-24°C) 2.573, Δ −0.083 goals (~3%, trivial). **Findings: weather has no usable
+effect on tournament-match goals.** Two honest reasons it's a non-factor: (a) tournaments are
+**scheduled to avoid extreme weather** (Qatar 2022 → winter; summer matches → evenings), so the
+sample's weather variance is compressed by design; (b) even the residual hot-match dip is tiny and
+symmetric (both sides), so it can't move 1X2. **Decision: weather stays display-only (the forecast
+shown on a match card), not a prediction factor — in pre-match OR review.** Corrects the earlier
+"16-day forecast" framing: the real reason is *it was tested on 1642 matches and doesn't move
+results*. Altitude (Run 4) stays — different mechanism (physiological, ~6%, can't be scheduled
+around). Tool: `skill/backtest/ablation_weather.py`.
+
+## Run 20 — climate mismatch (cold-climate teams in heat): TESTED, NOT adopted
+
+The steelman after Run 19's aggregate null: a *differential* — a cold-climate side stressed by
+heat its opponent is acclimatised to (the heat analogue of altitude). Method: each national team
+got a home-climate baseline = mean daily-max temp of its country (one ERA5 climatology year,
+look-ahead free; e.g. Austria 10.5°C, Argentina 23.0, Algeria 30.6). For each match, heat
+mismatch = match_tmax − baseline per side; tested the **427 matches** where the two sides differ
+by ≥6°C, walk-forward.
+
+| | result |
+|--|--|
+| more-heat-stressed side: model-expected win-rate | 32.4% |
+| more-heat-stressed side: **actual** win-rate | **38.2%** |
+| penalty 0 / 0.01 / 0.02 / 0.04 per °C → RPS | 0.1908 / 0.1930 / 0.1956 / 0.1970 |
+
+**Findings: the opposite of the hypothesis.** The heat-stressed side won *more* than the model
+predicted, and penalising it monotonically worsened RPS (same shape as Runs 9/14/17). The
+confound: cold-climate = European = systematically stronger, so "cold team in heat" is usually the
+**favourite** (a Euro power vs a weaker hot-climate host), and strength swamps any heat
+disadvantage. **Decision: no climate-mismatch factor.** Weather is now comprehensively dead — both
+the average effect (Run 19) and the differential (Run 20). Tool:
+`skill/backtest/ablation_climate_mismatch.py`.

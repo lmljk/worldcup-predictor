@@ -48,3 +48,8 @@ data/fd_matches.json
 
 # Claude Code local preview/dev config
 .claude/
+
+# weather backtest caches (regenerable via ablation_weather / ablation_climate_mismatch)
+data/geocode_cache.json
+data/weather_archive_cache.json
+data/country_climate_cache.json
