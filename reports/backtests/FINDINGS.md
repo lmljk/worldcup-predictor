@@ -279,3 +279,72 @@ referee-bias tables are ToS-gray (same objection as Macau odds).
 lineups), not a prediction factor. Folding it into λ would be fabricating a signal we cannot
 verify. If ever pursued, it belongs in a separate cards/bookings model fed by a paid events
 dataset, not the goals/result model.
+
+## Run 14 — dead-rubber / 战意 (final-group-round motivation): TESTED, NOT adopted
+
+Hypothesis (user, borrowed from a competing model's blurb): on matchday 3 a team already
+mathematically **qualified or eliminated** has lower motivation (rests starters) and
+underperforms its model win-probability. Distinct from Run 9 (which weighted match *importance*
+in training) — this is a match-day status effect.
+
+Method (look-ahead free): reconstructed 4-team groups from the match graph for clean top-2
+editions (WC 1998-2022, Euro 1996-2012); computed standings from matchday 1-2 results only;
+flagged a side "dead" if it was top-2-clinched or eliminated under **all** 3^2 remaining-result
+combinations; refit DC `as_of` each MD3 date. n=144 MD3 matches, 142 dead sides.
+
+| | result |
+|--|--|
+| model expected win-rate of dead sides | 33.5% |
+| **actual** win-rate of dead sides | **38.7%** |
+| penalty 0.0 / 0.08 / 0.15 / 0.25 → RPS | 0.2052 / 0.2060 / 0.2070 / 0.2091 |
+
+**Findings: the opposite of the hypothesis.** Dead-rubber sides won *more* than the model
+predicted, and a motivation penalty made RPS monotonically worse (mirror of Run 9). The
+"qualified team slacks off and loses" narrative isn't extractable: teams that clinch early are
+the strong teams, and that strength swamps any intensity drop — a strength-confounded
+non-signal. **One real by-product:** MD3 dead-rubber matches are genuinely noisier (subset RPS
+0.205 vs ~0.19 for majors overall), so these games carry more variance — but the variance is
+*not* directional ("dead team loses" is false), so there is nothing to bet on. **Decision: no
+motivation factor.** (Caveat: clinched and eliminated were pooled; a finer split is possible
+future work, but the simple directional factor is dead either way.) Tool:
+`skill/backtest/ablation_deadrubber.py`.
+
+## Run 15 — calibration / overconfidence ("upset variance layer"): TESTED, NOT adopted
+
+Hypothesis (#3): the ensemble is overconfident — favourites win less than predicted — so a
+probability-calibration / variance layer (the "爆冷波动层" the blurb brags about) should help.
+Method: 935 walk-forward major-match predictions (2010-2023); one-vs-rest reliability + ECE;
+temperature scaling p ∝ p^(1/T) fit on the chronological first half, tested on the second.
+
+| | result |
+|--|--|
+| ECE (10-bin, one-vs-rest) | **0.0230** (already well-calibrated) |
+| reliability shape | mid-range (0.40-0.80) slightly **under**-confident; only the tiny 0.80+ bins (n=23/7) over |
+| fitted T | **0.925** (T<1 = *sharpen*, not soften) |
+| holdout RPS (uncal → T-scaled) | 0.18919 → 0.18884 (−0.00036, better) |
+| holdout log-loss | 0.96513 → 0.96575 (+0.00062, worse) |
+
+**Findings:** the model is **not** systematically overconfident on 1X2 — if anything mildly
+*under*-confident mid-range, so the optimal temperature *sharpens* (T=0.925). The holdout effect
+is marginal and metric-conflicting (RPS slightly better, log-loss slightly worse) → no clean
+baseline beat. Crucially, the blurb's instinct (soften favourites for upsets, T>1) would push
+calibration the **wrong** way and hurt. **Decision: no calibration layer.** The residual
+Argentina-vs-market gap (Run 2, +7.5%) is therefore a *strength-estimate* issue (ELO overrates
+Argentina), not a variance/calibration one — a different lever, not fixable by softening probs.
+Tool: `skill/backtest/calibration.py`.
+
+## Run 16 — pre-tournament injury (season-ending absence): NOT backtestable (free data)
+
+Hypothesis (#2): a key player ruled out for the whole tournament should lower that team's
+talent across all its matches (not just match-day, which the lineup-absence channel already
+handles). **Verdict: cannot be walk-forward validated on free data** — there is no historical,
+machine-readable "player X missed tournament Y with injury" series, and no counterfactual, so
+the doctrine's "must beat baseline" gate can't even be applied. At best it would be a transparent
+prior (haircut a team's `squad_talent` when a star is pre-ruled-out), shown as a factor, never a
+backtest-proven weight — same status as the talent/context priors. Not implemented pending a
+decision to add it as an explicit prior.
+
+**Net of Runs 14-16:** all three "advanced layers" a competing blurb advertises
+(upset-variance, dead-rubber motivation, and — from Run 10 — crude coach-tactics) either fail
+validation or can't be validated. Restraint is the finding: two of three intuitions were
+falsified outright on data.
