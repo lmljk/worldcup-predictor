@@ -22,13 +22,16 @@ from ..model import dixon_coles as dc
 from .montecarlo import (
     OFFICIAL_GROUPS,
     _GI,
+    _R16_PAIRS,
     _R32,
-    _THIRD_ELIG,  # noqa: F401  (kept for parity / future eligibility checks)
-    _THIRD_POS,
+    _THIRD_MATCHES,
     _assign_thirds,
 )
 
 _ROUND_NAMES = ["R32", "R16", "QF", "SF", "Final"]
+# Reorder the 16 R32 matches into bracket top→bottom order so the whole tree becomes
+# adjacent-pairs (left half first). Derived from the official R16 feeder map.
+_R32_ORDER = [x for i in (0, 1, 4, 5, 2, 3, 6, 7) for x in _R16_PAIRS[i]]
 
 
 def _eff_win(model, a: str, b: str) -> float:
@@ -68,35 +71,31 @@ def project(model, fixtures=None) -> dict:
     assign = _assign_thirds(qual)            # group-index per third-slot (len 8)
     gi_team = {_GI[c]: thirds[c][0] for c in OFFICIAL_GROUPS}
 
-    # fill the 32 bracket positions in official R32 order
-    slots: list[str | None] = [None] * 32
+    # resolve each of the 16 R32 matches to (home, away) in official match order 73..88
+    pair16: list[list] = [[None, None] for _ in range(16)]
     for mi, (h, a) in enumerate(_R32):
         for si, slot in enumerate((h, a)):
-            pos = mi * 2 + si
             if slot[0] == "W":
-                slots[pos] = winners[slot[1]]
+                pair16[mi][si] = winners[slot[1]]
             elif slot[0] == "RU":
-                slots[pos] = runners[slot[1]]
-            # '3RD' positions filled next
-    for k, pos in enumerate(_THIRD_POS):
-        slots[pos] = gi_team[assign[k]]
+                pair16[mi][si] = runners[slot[1]]
+    for k, (mi, _e) in enumerate(_THIRD_MATCHES):
+        pair16[mi][1] = gi_team[assign[k]]   # third slot is the away side
 
-    # climb the single-elimination tree, modal winner each tie
-    cur: list[str] = list(slots)             # type: ignore[arg-type]
+    # reorder into bracket top→bottom order → the whole tree is now adjacent pairs
+    cur_pairs = [tuple(pair16[i]) for i in _R32_ORDER]   # 16 (home, away) ties
     rounds = []
     for rname in _ROUND_NAMES:
         matches, nxt = [], []
-        for i in range(0, len(cur), 2):
-            a, b = cur[i], cur[i + 1]
+        for a, b in cur_pairs:
             pa = _eff_win(model, a, b)
             win = a if pa >= 0.5 else b
-            matches.append({
-                "a": a, "b": b, "winner": win,
-                "p": round(pa if win == a else 1 - pa, 4),
-            })
+            matches.append({"a": a, "b": b, "winner": win,
+                            "p": round(pa if win == a else 1 - pa, 4)})
             nxt.append(win)
         rounds.append({"round": rname, "matches": matches})
-        cur = nxt
+        cur_pairs = [(nxt[i], nxt[i + 1]) for i in range(0, len(nxt) - 1, 2)]
+    cur = [rounds[-1]["matches"][0]["winner"]]
 
     return {
         "champion": cur[0],
