@@ -137,6 +137,14 @@
     align-items:baseline;gap:10px;border-bottom:1px solid var(--line);padding-bottom:7px;}
   .round-head span{color:var(--mut);font-size:12px;font-weight:400;}
   .round-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:13px;}
+  .groupgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;}
+  .gcard{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 13px;}
+  .gcard h4{margin:0 0 9px;font-size:13px;color:var(--mut);letter-spacing:.5px;}
+  .grow{display:flex;align-items:center;gap:7px;font-size:13px;padding:3px 0;}
+  .grow .qbar{flex:1;height:7px;background:var(--line);border-radius:4px;overflow:hidden;}
+  .grow .qbar>i{display:block;height:100%;background:linear-gradient(90deg,var(--acc2),var(--acc));}
+  .grow .q{width:38px;text-align:right;font-variant-numeric:tabular-nums;color:var(--mut);font-size:12px;}
+  .grow.adv{font-weight:600;} .grow.adv .q{color:var(--acc);}
   .clk{cursor:pointer;}
   .clk:hover{text-decoration:underline;text-decoration-color:var(--acc2);text-underline-offset:2px;}
   /* ---------- elimination tree (出线树) ---------- */
@@ -238,6 +246,9 @@
     <h2><span class="bar"></span><span id="t-cmp"></span> <span class="note" id="t-cmp-note"></span></h2>
     <table id="cmp"></table>
 
+    <h2><span class="bar"></span><span id="t-groups"></span> <span class="note" id="t-groups-note"></span></h2>
+    <div id="groups" class="groupgrid"></div>
+
     <h2 id="h-acc" style="display:none"><span class="bar"></span><span id="t-acc"></span> <span class="note" id="t-acc-note"></span></h2>
     <table id="acc"></table>
 
@@ -287,6 +298,8 @@ const I18N = {
     sRecent:"Recent goals (2y)", penTaker:"PK taker",
     move:"Market movement — odds drift", moveNote:"~7-day change in title odds: the public footprint of late info (injuries, sharp money)",
     mNow:"Market", mDelta:"7d Δ", mTrend:"Trend",
+    groups:"Group qualification (出线)", groupsNote:"chance to top the group / to qualify (top-2 or best third)",
+    winG:"Win", qual:"Qualify",
     accTitle:"Live prediction accuracy", accNote:"every finished match vs our pre-kickoff forecast",
     accHit:"Accuracy to date", accRps:"Avg RPS", accRec:"Record", accMatches:"matches",
     accStarts:"⏳ Live scoreboard activates when the World Cup kicks off (Jun 11) — each result will be checked against our forecast.",
@@ -321,6 +334,8 @@ const I18N = {
     sRecent:"近2年进球", penTaker:"点球手",
     move:"市场异动 — 赔率漂移", moveNote:"夺冠赔率近 7 天变化:伤病、资金动向等最新信息在公开赔率上的体现",
     mNow:"市场", mDelta:"7天Δ", mTrend:"趋势",
+    groups:"小组出线", groupsNote:"小组头名 / 出线(前二或最佳第三)概率",
+    winG:"头名", qual:"出线",
     accTitle:"实时预测战绩", accNote:"每场完赛结果 vs 我们赛前的预测",
     accHit:"截至目前准确率", accRps:"平均 RPS", accRec:"战绩", accMatches:"场",
     accStarts:"⏳ 6 月 11 日世界杯开赛后,实时战绩看板自动启动 —— 每场结果都会与我们的预测对照。",
@@ -427,6 +442,18 @@ function compactCard(m){
   return `<div class="card"${m.score!=null?` style="border-color:${m.correct?'#1f5d36':'#5d1f24'}"`:''}>
     <div class="mtop"><span>${m.date||''}</span><span>${res||(m.group?'Group '+m.group:'')}</span></div>
     <div class="vs">${teams}</div>${bar}</div>`;
+}
+function renderGroups(gs){
+  const el=document.getElementById("groups");
+  if(!gs||!Object.keys(gs).length){ el.innerHTML=""; return; }
+  el.innerHTML=Object.entries(gs).map(([gl,teams])=>{
+    const rows=teams.map(t=>{const adv=t.qualify>=0.5;
+      return `<div class="grow ${adv?'adv':''}">${flag(t.team)}
+        <span class="tcell clk" data-team="${esc(t.team)}" style="flex:0 0 auto;max-width:92px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${tName(t.team)}</span>
+        <span class="qbar"><i style="width:${(t.qualify*100).toFixed(0)}%"></i></span>
+        <span class="q">${(t.qualify*100).toFixed(0)}%</span></div>`;}).join("");
+    return `<div class="gcard"><h4>${LANG==='zh'?'小组 '+gl:'Group '+gl}</h4>${rows}</div>`;
+  }).join("");
 }
 function renderTimeline(d){
   const sch=d.schedule||[], el=document.getElementById('matches');
@@ -624,6 +651,8 @@ function render(){
   const nsrc=(DATA.market_title||{}).n_sources, srcs=(DATA.market_title||{}).sources;
   document.getElementById("t-cmp-note").textContent="· "+t.cmpNote+(nsrc>1?` · ${LANG==='zh'?nsrc+' 家市场共识':nsrc+'-market consensus'} (${srcs})`:"");
   document.getElementById("search").placeholder=t.search;
+  document.getElementById("t-groups").textContent=t.groups;
+  document.getElementById("t-groups-note").textContent="· "+t.groupsNote;
   document.getElementById("t-acc").textContent=t.accTitle;
   document.getElementById("t-acc-note").textContent="· "+t.accNote;
   document.getElementById("t-move").textContent=t.move;
@@ -645,6 +674,7 @@ function render(){
   bracketTree(DATA.bracket);
   probTable(document.getElementById("title"), sim.title_probability, 16);
   probTable(document.getElementById("r32"), sim.reach_knockout_R32, 16);
+  renderGroups(sim.group_standings);
   accBanner(document.getElementById("accbanner"), DATA.live_accuracy);
   accTable(document.getElementById("acc"), DATA.live_accuracy);
   cmpTable(document.getElementById("cmp"), DATA.title_comparison);

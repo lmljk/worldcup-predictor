@@ -174,6 +174,8 @@ def run(model, fixtures: pd.DataFrame, n: int = 50000, seed: int = 0,
     reached = {k: np.zeros(nt) for k in
                ("R32", "R16", "QF", "SF", "final", "champion")}
     group_adv = np.zeros(nt)  # top-2 finish probability
+    first_cnt = np.zeros(nt)  # win-group counter
+    group_of = {}             # team -> group letter (official order)
 
     # group standings → top 2 + collect third-placed
     top2_ids = np.empty((n, len(groups) * 2), dtype=int)
@@ -194,6 +196,9 @@ def run(model, fixtures: pd.DataFrame, n: int = 50000, seed: int = 0,
         third_gd[:, gi] = ggd[rows, order[:, 2]]
         third_gf[:, gi] = ggf[rows, order[:, 2]]
         np.add.at(group_adv, glob[:, :2].ravel(), 1)
+        np.add.at(first_cnt, glob[:, 0], 1)
+        for t in g:
+            group_of[t] = "ABCDEFGHIJKL"[gi] if official else str(gi)
 
     # 8 best third-placed (group indices that qualify, per sim)
     torder = _rank_desc(rng, third_gf, third_gd, third_pts)  # (n,12)
@@ -307,8 +312,27 @@ def run(model, fixtures: pd.DataFrame, n: int = 50000, seed: int = 0,
                 },
             }
 
+    # qualify = top-2  OR  (3rd-placed AND that group is among the best-8 thirds)
+    qualify_cnt = group_adv.copy()
+    for gi in range(len(groups)):
+        mask = (qual == gi).any(axis=1)
+        np.add.at(qualify_cnt, third_ids[mask, gi], 1)
+
     def table(counter):
         return {teams[i]: round(float(counter[i]) / n, 4) for i in range(nt)}
+
+    # per-group qualification standings (the "出线" view)
+    group_standings = {}
+    if official:
+        for gi, letter in enumerate("ABCDEFGHIJKL"):
+            tl = sorted(groups[gi],
+                        key=lambda t: -(qualify_cnt[tid[t]]))
+            group_standings[letter] = [{
+                "team": t,
+                "win_group": round(float(first_cnt[tid[t]]) / n, 4),
+                "advance": round(float(group_adv[tid[t]]) / n, 4),
+                "qualify": round(float(qualify_cnt[tid[t]]) / n, 4),
+            } for t in tl]
 
     champ = table(reached["champion"])
     out = {
@@ -321,6 +345,7 @@ def run(model, fixtures: pd.DataFrame, n: int = 50000, seed: int = 0,
         "reach_knockout_R32": dict(sorted(table(reached["R32"]).items(), key=lambda x: -x[1])),
         "reach_quarterfinal": dict(sorted(table(reached["QF"]).items(), key=lambda x: -x[1])),
         "reach_final": dict(sorted(table(reached["final"]).items(), key=lambda x: -x[1])),
+        "group_standings": group_standings,
     }
     if golden_boot:
         out["golden_boot"] = golden_boot
