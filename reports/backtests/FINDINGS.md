@@ -257,3 +257,25 @@ range and never hurts.
 | yellow-cards / suspension | no historical | suspension folded into match-day absences |
 
 Tool: `skill/backtest/ablation_rest.py` (reusable).
+
+## Run 13 — referee factor: CONSIDERED, NOT adopted (no free historical data)
+
+User asked whether referee tendencies are modeled. They are **not** — by design, same
+discipline as age (Run 7) / importance (Run 9) / coach-tactics (Run 10).
+
+**Data reality.** The football-data.org feed exposes a `referees` field, and the match-detail
+loader (`data_loader.fetch_fd_match`) pulls the appointed referee match-day alongside lineups.
+But the *training* set (martj42 results.csv) is **scores only** — no per-match referee, no
+card/penalty event history. football-data populates `referees` only ~1-2 days pre-match. So
+there is no historical referee+events series to fit or **walk-forward validate** against — it
+fails the "a factor must beat baseline to be adopted" rule before it even starts.
+
+**Even with the data, weak for 1X2.** Referee tendencies mostly move the *cards / penalties*
+markets (a bookings sub-model), not who wins. The marginal effect on the match result is small
+and noisy — isolating it would need paid event data (Opta/StatsBomb tier), and scraped
+referee-bias tables are ToS-gray (same objection as Macau odds).
+
+**Decision:** referee is **display-only context** (shown match-day on the dashboard next to
+lineups), not a prediction factor. Folding it into λ would be fabricating a signal we cannot
+verify. If ever pursued, it belongs in a separate cards/bookings model fed by a paid events
+dataset, not the goals/result model.
