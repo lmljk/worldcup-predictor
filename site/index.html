@@ -133,6 +133,10 @@
   .cred .sub{font-size:11.5px;margin-top:2px;}
   .cred .cnote{color:var(--mut);font-size:12.5px;line-height:1.5;margin-top:13px;max-width:740px;}
   .ok{color:var(--acc);} .no{color:var(--red);}
+  .round-head{font-size:15px;font-weight:700;color:var(--txt);margin:24px 0 10px;display:flex;
+    align-items:baseline;gap:10px;border-bottom:1px solid var(--line);padding-bottom:7px;}
+  .round-head span{color:var(--mut);font-size:12px;font-weight:400;}
+  .round-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:13px;}
   .clk{cursor:pointer;}
   .clk:hover{text-decoration:underline;text-decoration-color:var(--acc2);text-underline-offset:2px;}
   /* ---------- elimination tree (出线树) ---------- */
@@ -249,7 +253,7 @@
       <span><i class="dot b-d"></i><span id="t-leg-d"></span></span>
       <span><i class="dot b-a"></i><span id="t-leg-a"></span></span>
     </div>
-    <div class="grid" id="matches"></div>
+    <div id="matches"></div>
 
     <footer id="t-foot"></footer>
   </main>
@@ -405,6 +409,42 @@ function cmpTable(el, rows){
     }).join("");
 }
 function splitPlayer(key){ const m=key.match(/^(.*?)\s*\(([^)]+)\)\s*$/); return m?[m[1],m[2]]:[key,null]; }
+const STAGE_NAMES={GROUP_STAGE:{zh:'小组赛',en:'Group stage'},LAST_32:{zh:'32 强',en:'Round of 32'},
+  LAST_16:{zh:'16 强',en:'Round of 16'},QUARTER_FINALS:{zh:'1/4 决赛',en:'Quarter-finals'},
+  SEMI_FINALS:{zh:'半决赛',en:'Semi-finals'},THIRD_PLACE:{zh:'季军赛',en:'Third place'},FINAL:{zh:'决赛',en:'Final'}};
+const STAGE_ORDER=['GROUP_STAGE','LAST_32','LAST_16','QUARTER_FINALS','SEMI_FINALS','THIRD_PLACE','FINAL'];
+function _nmk(h,a){const f=s=>(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z]/g,'');return [f(h),f(a)].sort().join('|');}
+function dateRange(rows){const ds=rows.map(r=>r.date).filter(Boolean).sort();return ds.length?(ds[0]+(ds[ds.length-1]!==ds[0]?' – '+ds[ds.length-1]:'')):'';}
+function compactCard(m){
+  const zh=LANG==='zh', tbd=zh?'待定':'TBD';
+  const teams=(m.home&&m.away)
+    ?`<span class="side clk" data-team="${esc(m.home)}">${flag(m.home)}<span>${tName(m.home)}</span></span><span class="vsx">VS</span><span class="side away clk" data-team="${esc(m.away)}">${flag(m.away)}<span>${tName(m.away)}</span></span>`
+    :`<span class="side" style="color:var(--mut)">${tbd}</span><span class="vsx">VS</span><span class="side away" style="color:var(--mut)">${tbd}</span>`;
+  let bar='';
+  if(m.probs){const[h,dd,a]=m.probs.map(x=>x*100);const lb=v=>v>=11?v.toFixed(0):'';
+    bar=`<div class="bar3"><span class="b-h" style="width:${h}%">${lb(h)}</span><span class="b-d" style="width:${dd}%">${lb(dd)}</span><span class="b-a" style="width:${a}%">${lb(a)}</span></div>`;}
+  const res=(m.score!=null)?`<span style="font-weight:700;color:${m.correct?'var(--acc)':'var(--red)'}">${m.score} ${m.correct?'✓':'✗'}</span>`:'';
+  return `<div class="card"${m.score!=null?` style="border-color:${m.correct?'#1f5d36':'#5d1f24'}"`:''}>
+    <div class="mtop"><span>${m.date||''}</span><span>${res||(m.group?'Group '+m.group:'')}</span></div>
+    <div class="vs">${teams}</div>${bar}</div>`;
+}
+function renderTimeline(d){
+  const sch=d.schedule||[], el=document.getElementById('matches');
+  if(!sch.length){ el.innerHTML=(d.predictions||[]).filter(m=>!m.error).map(matchCard).join(''); return; }
+  const zh=LANG==='zh', pidx={};
+  (d.predictions||[]).forEach(p=>{if(!p.error)pidx[_nmk(p.home,p.away)]=p;});
+  const card=m=>{const p=(m.home&&m.away)?pidx[_nmk(m.home,m.away)]:null; return p?matchCard(p):compactCard(m);};
+  let html='';
+  for(const st of STAGE_ORDER){
+    const rows=sch.filter(m=>m.stage===st); if(!rows.length) continue;
+    const groups = st==='GROUP_STAGE' ? [1,2,3].map(md=>[zh?'第'+md+'轮':'Matchday '+md, rows.filter(m=>m.matchday===md)]) : [['',rows]];
+    for(const [sub,mr] of groups){ if(!mr.length) continue;
+      html+=`<div class="round-head">${STAGE_NAMES[st][zh?'zh':'en']}${sub?' · '+sub:''} <span>${dateRange(mr)}</span></div>`;
+      html+=`<div class="round-grid">${mr.map(card).join('')}</div>`;
+    }
+  }
+  el.innerHTML=html;
+}
 function accBanner(el, la){
   const s=(la&&la.summary)||{n:0};
   const t=L();
@@ -610,9 +650,9 @@ function render(){
   cmpTable(document.getElementById("cmp"), DATA.title_comparison);
   moveTable(document.getElementById("move"), DATA.movement);
   bootTable(document.getElementById("boot"), sim.golden_boot);
-  const ms=(DATA.predictions||[]).filter(m=>!m.error);
+  const ms=(DATA.schedule||DATA.predictions||[]).filter(m=>!m.error);
   document.getElementById("mcount").textContent="· "+t.mcount(ms.length);
-  document.getElementById("matches").innerHTML=ms.map(matchCard).join("");
+  renderTimeline(DATA);
 }
 /* ---------- search + detail views ---------- */
 let SIDX=[];

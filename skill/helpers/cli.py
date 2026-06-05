@@ -343,6 +343,7 @@ def _cmd_review(args):
     from ..backtest import metrics
 
     data_loader.fetch_historical(force=True)  # pull latest scores
+    data_loader.fetch_fd_matches(force=True)  # refresh official schedule + live scores/knockout teams
     hist = data_loader.fetch_historical()
     played = hist[
         (hist["tournament"] == paths.WC2026_TOURNAMENT)
@@ -386,6 +387,46 @@ def _cmd_review(args):
     # refresh forward-looking predictions + sim + publish
     _cmd_predict(argparse.Namespace(match=None, all=True, simulate=True, sims=args.sims))
     _cmd_publish(argparse.Namespace(date=None))
+
+
+def _schedule_payload(preds: list) -> list:
+    """Official 104-match schedule (football-data.org) in chronological order, every stage,
+    joined to our predictions + results. Knockout matches show their round until teams are
+    drawn, then fill in with a prediction and (once played) a ✓/✗ vs the actual result."""
+    import re
+    import unicodedata
+
+    def nm(s):
+        s = unicodedata.normalize("NFD", str(s or "")).encode("ascii", "ignore").decode()
+        return re.sub(r"[^a-z]", "", s.lower())
+
+    pidx = {(nm(p["home"]), nm(p["away"])): p for p in preds if not p.get("error")}
+    out = []
+    for m in sorted(data_loader.fetch_fd_matches(), key=lambda x: x.get("utcDate", "")):
+        home = data_loader.fd_canon((m.get("homeTeam") or {}).get("name"))
+        away = data_loader.fd_canon((m.get("awayTeam") or {}).get("name"))
+        ft = (m.get("score") or {}).get("fullTime") or {}
+        status = m.get("status")
+        score = (f"{ft['home']}-{ft['away']}"
+                 if status == "FINISHED" and ft.get("home") is not None else None)
+        rec = {"date": (m.get("utcDate") or "")[:10], "stage": m.get("stage"),
+               "matchday": m.get("matchday"), "group": (m.get("group") or "").replace("GROUP_", ""),
+               "home": home, "away": away, "status": status, "score": score}
+        p = pidx.get((nm(home), nm(away))) if home and away else None
+        if p:
+            rec["probs"] = [p["p_home"], p["p_draw"], p["p_away"]]
+        elif home and away and (nm(away), nm(home)) in pidx:  # orientation flipped
+            q = pidx[(nm(away), nm(home))]
+            rec["probs"] = [q["p_away"], q["p_draw"], q["p_home"]]  # swap home/away
+            p = q
+        if rec.get("probs"):
+            rec["pick"] = int(max(range(3), key=lambda i: rec["probs"][i]))
+        if p and score:
+            h, a = (int(x) for x in score.split("-"))
+            outcome = 0 if h > a else (1 if h == a else 2)
+            rec["correct"] = rec["pick"] == outcome
+        out.append(rec)
+    return out
 
 
 def _accuracy_payload() -> dict:
@@ -505,6 +546,7 @@ def _cmd_publish(args):
         if (paths.DATA / "portraits.json").exists() else {},
         "live_accuracy": _accuracy_payload(),
         "backtest": _backtest_headline(),
+        "schedule": _schedule_payload(json.loads(preds_f.read_text())),
     }
     # Market anchor: Polymarket title odds vs our Monte Carlo (model-vs-market + edge).
     model_title = sim.get("title_probability", {})

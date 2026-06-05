@@ -356,18 +356,40 @@ def _fd_headers() -> dict:
     return {"X-Auth-Token": os.environ.get("FOOTBALL_DATA_API_KEY", ""), **UA}
 
 
-def fetch_fd_matches() -> list[dict[str, Any]]:
-    """football-data.org WC matches: id, kickoff, status, venue, score, lineups, referees.
-    Free tier; lineups/referees populate on match day. Returns [] on any error/no key."""
+FD_MATCHES_JSON = paths.DATA / "fd_matches.json"
+# football-data.org nation labels -> our dataset names (where they differ).
+FD_NAME_ALIAS = {
+    "Czechia": "Czech Republic", "Korea Republic": "South Korea", "IR Iran": "Iran",
+    "Türkiye": "Turkey", "Côte d'Ivoire": "Ivory Coast", "Cape Verde Islands": "Cape Verde",
+    "Congo DR": "DR Congo", "Bosnia-Herzegovina": "Bosnia and Herzegovina",
+}
+
+
+def fd_canon(name: str | None) -> str | None:
+    if not name:
+        return None
+    return FD_NAME_ALIAS.get(name, name)
+
+
+def fetch_fd_matches(force: bool = False) -> list[dict[str, Any]]:
+    """football-data.org WC matches (all 104, every stage): id, kickoff, status, venue,
+    score, teams (knockout teams null until drawn). Cached to disk (free tier = 10 req/min);
+    `review` forces a refresh for live scores. Returns cached/[] on error or no key."""
+    import json as _json
     if not os.environ.get("FOOTBALL_DATA_API_KEY"):
-        return []
+        return _json.loads(FD_MATCHES_JSON.read_text()) if FD_MATCHES_JSON.exists() else []
+    if not force and FD_MATCHES_JSON.exists():
+        return _json.loads(FD_MATCHES_JSON.read_text())
     try:
         r = requests.get(f"{paths.FOOTBALL_DATA_BASE}/competitions/WC/matches",
                          headers=_fd_headers(), timeout=30)
         r.raise_for_status()
-        return r.json().get("matches", [])
+        ms = r.json().get("matches", [])
+        if ms:
+            FD_MATCHES_JSON.write_text(_json.dumps(ms, ensure_ascii=False))
+        return ms
     except requests.RequestException:
-        return []
+        return _json.loads(FD_MATCHES_JSON.read_text()) if FD_MATCHES_JSON.exists() else []
 
 
 def fetch_fd_match(match_id: int) -> dict[str, Any]:
