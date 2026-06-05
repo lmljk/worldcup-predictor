@@ -341,8 +341,17 @@ handles). **Verdict: cannot be walk-forward validated on free data** — there i
 machine-readable "player X missed tournament Y with injury" series, and no counterfactual, so
 the doctrine's "must beat baseline" gate can't even be applied. At best it would be a transparent
 prior (haircut a team's `squad_talent` when a star is pre-ruled-out), shown as a factor, never a
-backtest-proven weight — same status as the talent/context priors. Not implemented pending a
-decision to add it as an explicit prior.
+backtest-proven weight — same status as the talent/context priors.
+
+**Update — implemented as a *mechanical* prior (not a tuned penalty).** Rather than hand-pick a
+haircut, a confirmed tournament-long absentee is **removed from the squad before** squad-talent /
+FC25 strength is computed (`model/injuries.py`, fed by curated `data/injuries_wc2026.json` with a
+public source per entry). The projected XI rebuilds with the next-best player, so attack/defence
+fall by the absentee's **marginal** contribution — the magnitude is endogenous, nothing is fitted.
+Verified mechanically: injecting "Mbappé out" drops France FC25 attack_z 1.848 → 1.505 (−0.343),
+the XI's real marginal loss. Surfaced on the dashboard team card as "injury prior", explicitly
+labelled a prior. The file ships **empty** (no fabricated injuries); it activates only when a real
+ruling is added. Distinct from the match-day lineup-absence channel (single-match goal shares).
 
 **Net of Runs 14-16:** all three "advanced layers" a competing blurb advertises
 (upset-variance, dead-rubber motivation, and — from Run 10 — crude coach-tactics) either fail

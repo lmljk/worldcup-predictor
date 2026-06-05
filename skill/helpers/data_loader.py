@@ -76,6 +76,18 @@ def load_wc2026_fixtures() -> pd.DataFrame:
     return fx
 
 
+def load_injuries() -> list[dict]:
+    """Curated tournament-long absentees (transparent injury prior). Empty until
+    confirmed rulings are added to data/injuries_wc2026.json."""
+    f = paths.DATA / "injuries_wc2026.json"
+    if not f.exists():
+        return []
+    try:
+        return json.loads(f.read_text()).get("out", [])
+    except (json.JSONDecodeError, AttributeError):
+        return []
+
+
 def fetch_weather(lat: float, lon: float, when: str) -> dict[str, Any]:
     """Open-Meteo forecast/hindcast for a venue at a date (no key)."""
     params = {

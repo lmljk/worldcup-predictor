@@ -44,14 +44,38 @@ def _cmd_predict(args):
     except Exception as e:  # noqa: BLE001
         print(f"[form skipped] {e}", file=sys.stderr)
 
+    # pre-tournament injury prior: drop confirmed tournament-long absentees from the
+    # squad BEFORE strength is computed, so the projected XI rebuilds and attack/defence
+    # fall by the absentee's marginal contribution (endogenous, not a tuned penalty).
+    injuries = data_loader.load_injuries()
+    removed_inj, inj_exclude, squads_full = {}, {}, squads
+    if injuries:
+        from ..model import injuries as injmod
+        squads_full = {t: list(ps) for t, ps in squads.items()}
+        squads, removed_inj = injmod.apply(squads, injuries)
+        inj_exclude = injmod.exclude_keys(removed_inj)
+        if removed_inj:
+            print(f"[injury] {sum(len(v) for v in removed_inj.values())} tournament-long "
+                  f"absentee(s) removed from {len(removed_inj)} squad(s)")
+
     # squad-talent prior (clubelo): nudge strength toward roster quality the
     # results-based model misses (e.g. France). Transparent, surfaced as a factor.
-    talent, fc_team, fc_player = {}, {}, {}
+    talent, fc_team, fc_player, injury_delta = {}, {}, {}, {}
     try:
         from ..model import fcratings, talent as talentmod
         talent = talentmod.squad_talent(squads, data_loader.fetch_club_elo())
         try:
-            fc_team, fc_player = fcratings.team_ratings(squads)
+            fc_team, fc_player = fcratings.team_ratings(squads, exclude=inj_exclude)
+            if removed_inj:  # measure the endogenous haircut vs the un-injured XI
+                fc_full, _ = fcratings.team_ratings(squads_full)
+                for tm in removed_inj:
+                    if tm in fc_team and tm in fc_full:
+                        injury_delta[tm] = {
+                            "attack_z": round(fc_team[tm]["fc_attack_z"] - fc_full[tm]["fc_attack_z"], 3),
+                            "defence_z": round(fc_team[tm]["fc_defence_z"] - fc_full[tm]["fc_defence_z"], 3),
+                            "out": [{"player": g.get("matched") or g["player"],
+                                     "since": g.get("since"), "source": g.get("source")}
+                                    for g in removed_inj[tm]]}
             import re as _re
             import unicodedata as _u
             _nm = lambda s: _re.sub(r"[^a-z]", "", _u.normalize("NFD", str(s)).encode("ascii", "ignore").decode().lower())
@@ -124,18 +148,20 @@ def _cmd_predict(args):
         print(f"projected bracket champion: {bk['champion']}")
 
     # detail data for the dashboard's team/player search views
-    tf, sq = _detail_payload(model, results, fixtures, squads, sim, talent, fc_team)
+    tf, sq = _detail_payload(model, results, fixtures, squads, sim, talent, fc_team, injury_delta)
     (paths.report_dir() / "team_factors.json").write_text(json.dumps(tf, ensure_ascii=False))
     (paths.report_dir() / "squads_shares.json").write_text(json.dumps(sq, ensure_ascii=False))
 
 
-def _detail_payload(model, results, fixtures, squads, sim, talent=None, fc_team=None):
+def _detail_payload(model, results, fixtures, squads, sim, talent=None, fc_team=None,
+                    injury_delta=None):
     """Per-team model factors + per-player goal shares — powers the search detail views."""
     from ..model.elo import compute_elo_history
     from ..model.players import goal_shares, player_rate
 
     talent = talent or {}
     fc_team = fc_team or {}
+    injury_delta = injury_delta or {}
     _, elo = compute_elo_history(results)
     teams = sorted(set(fixtures["home_team"]) | set(fixtures["away_team"]))
     sim = sim or {}
@@ -158,6 +184,7 @@ def _detail_payload(model, results, fixtures, squads, sim, talent=None, fc_team=
             "avg_age": round(sum(team_ages) / len(team_ages), 1) if team_ages else None,
             "host": t in hosts,
             "title": tp.get(t), "advance": adv.get(t), "r32": r32.get(t), "final": fin.get(t),
+            "injuries": injury_delta.get(t),
         }
     sq = {}
     for t in teams:

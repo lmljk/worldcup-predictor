@@ -49,6 +49,7 @@ surface where the model *disagrees* with the market as the interesting signal.
 | Prediction market | Polymarket Gamma API (free, no key) |
 | Live odds | public aggregated odds; optional The Odds API (paid) |
 | Injuries / form / xG (optional) | `machina-sports/sports-skills` if installed |
+| Tournament-long injuries | curated `data/injuries_wc2026.json` (a *prior*: absentees dropped from the XI, strength recomputed) |
 
 The repo is **self-contained** — it talks to public APIs directly and implements its own betting
 math (de-vig, edge, Kelly), so it has no hard dependency on third-party data packages.

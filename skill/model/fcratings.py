@@ -70,12 +70,19 @@ def _def(p) -> float:
     return float((p.get("DEF", 0) + p.get("PHY", 0)) / 2)
 
 
-def team_ratings(squads: dict) -> dict[str, dict]:
-    """Per-team FC25 attack/defence/overall from a projected best XI, plus per-player OVR."""
+def team_ratings(squads: dict, exclude: dict | None = None) -> dict[str, dict]:
+    """Per-team FC25 attack/defence/overall from a projected best XI, plus per-player OVR.
+
+    `exclude` = {team: {normalised player names}} drops those players from the XI pool
+    (injury prior) even on the all-nationals fallback path, so a confirmed absentee can't
+    sneak back into the projected lineup.
+    """
     fc = load_fc25()
     out, player_ovr = {}, {}
     for team, sq in squads.items():
         sub = fc[fc["nation_std"] == team]
+        if exclude and team in exclude:
+            sub = sub[~sub["nkey"].isin(exclude[team])]
         if sub.empty:
             continue
         # match squad players to FC25 by normalised name; fall back to all FC25 nationals

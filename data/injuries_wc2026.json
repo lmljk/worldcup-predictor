@@ -1,0 +1,6 @@
+{
+  "_note": "Curated transparent prior: players CONFIRMED OUT for the whole tournament. Each entry is removed from its team's squad BEFORE squad-talent / FC25 strength is computed, so the projected XI rebuilds with the next-best player and the team's attack/defence fall by the absentee's marginal contribution (endogenous magnitude, not a hand-tuned penalty). This is a prior, not a backtested weight. Match-day knocks are handled separately by the live lineup-absence channel. Add entries with a public source; the daily review can append confirmed rulings.",
+  "_schema": {"player": "name as in squad", "team": "national team name", "since": "YYYY-MM-DD", "status": "out_tournament", "source": "public URL or outlet"},
+  "updated": "2026-06-06",
+  "out": []
+}
