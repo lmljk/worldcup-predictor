@@ -357,3 +357,38 @@ ruling is added. Distinct from the match-day lineup-absence channel (single-matc
 (upset-variance, dead-rubber motivation, and — from Run 10 — crude coach-tactics) either fail
 validation or can't be validated. Restraint is the finding: two of three intuitions were
 falsified outright on data.
+
+## Run 17 — defending-champion "curse" (卫冕魔咒): TESTED, NOT adopted
+
+User question: "everyone says the holder won't repeat — Argentina won 2022, Messi has his title,
+so 2026 won't be Argentina. Would you mark them down?" Tested it instead of asserting.
+
+Look-ahead free: the defending champion of edition (tour, year) is the winner of the *previous*
+edition — known before kickoff. Hardcoded holder map for WC/Euro/Copa 1994-2024 (22 editions,
+100 holder matches). DC refit `as_of` each match; compared holder model-expected vs actual
+win-rate; swept a penalty on the holder's λ.
+
+| | result |
+|--|--|
+| holder model-expected win-rate (100 matches) | 47.5% |
+| holder **actual** win-rate | **47.0%** — essentially identical, no aggregate curse |
+| penalty 0.0 / 0.05 / 0.10 / 0.20 → RPS | 0.19096 / 0.19043 / 0.19032 / 0.19150 |
+
+Per-edition fates (the vivid part of the narrative IS real, but split):
+  * **Group-stage flops** (curse confirmed): WC 2002 France (0% vs 51%), WC 2010 Italy (0/47),
+    WC 2014 Spain (33/52), WC 2018 Germany (33/50); Euro 2000/2008 holders also crashed.
+  * **Over-performers** (curse reversed): WC 2006 Brazil (80/57), **WC 2022 France reached the
+    final (71/40)**, WC 1994/1998 holders, and every recent **South-American Copa holder** —
+    **Argentina 2024 won 83% vs 52% expected**, Chile 2016, Brazil 2021.
+
+**Findings: the curse is a survivorship narrative, not a stable factor.** Aggregate holder
+win-rate matches the model almost exactly (47.0% vs 47.5%); the penalty's best RPS gain is
+0.0006 at 10% and *reverses* by 20% (non-monotonic = noise/overfit on n=100). Edition-level there
+is only a weak tilt (≈10 under / 7 over / 4 neutral), concentrated in **European** holders and the
+**2002-2018 WC window**. **Decision: no defending-champion factor** (same fate as importance /
+dead-rubber / calibration). **Specifically for Argentina 2026 the precedent runs the *opposite*
+way:** South-American Copa holders and the most recent WC holder (France 2022) over-performed, so
+the data gives the "won't repeat" claim no support for *this* team. Argentina's model 22.5% vs
+market 8.6% gap is an aging/ELO strength-estimate issue, to be pulled down by live market-anchoring
+once books open — not by hand-editing on a falsified narrative. Tool:
+`skill/backtest/ablation_holder.py`.
