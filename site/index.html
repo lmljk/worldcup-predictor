@@ -645,7 +645,9 @@ function render(){
   const t=L();
   document.getElementById("t-title").textContent=t.title;
   document.getElementById("t-tag").textContent=t.tag;
-  document.getElementById("t-title-prob").textContent=t.titleProb;
+  {const ta=DATA.title_anchor||{}; const wp=ta.w_title!=null?Math.round(ta.w_title*100):null;
+   document.getElementById("t-title-prob").textContent=t.titleProb+(wp!=null&&wp>0
+     ?(LANG==='zh'?` · 市场锚定 ${wp}%(裸模型+edge 见下方对比)`:` · ${wp}% market-anchored (raw model + edge below)`):"");}
   document.getElementById("t-r32").textContent=t.r32;
   document.getElementById("t-cmp").textContent=t.cmp;
   const nsrc=(DATA.market_title||{}).n_sources, srcs=(DATA.market_title||{}).sources;
@@ -672,7 +674,7 @@ function render(){
   const sim=DATA.simulation||{};
   highlights(DATA);
   bracketTree(DATA.bracket);
-  probTable(document.getElementById("title"), sim.title_probability, 16);
+  probTable(document.getElementById("title"), DATA.title_final||sim.title_probability, 16);
   probTable(document.getElementById("r32"), sim.reach_knockout_R32, 16);
   renderGroups(sim.group_standings);
   accBanner(document.getElementById("accbanner"), DATA.live_accuracy);
@@ -730,13 +732,13 @@ function teamMatches(team){
   });
 }
 function teamEval(tf){
-  const T=(tf.title||0)*100, zh=LANG==="zh";
+  const T=((tf.title_final!=null?tf.title_final:tf.title)||0)*100, zh=LANG==="zh";
   let tier = T>=10?(zh?"顶级争冠热门":"top title contender"):T>=4?(zh?"有力竞争者":"strong contender"):T>=1?(zh?"黑马":"a dark horse"):(zh?"以出线为目标":"aiming to escape the group");
   const style = tf.attack>tf.defence?(zh?"进攻型打法":"attack-minded"):(zh?"防守稳健":"defensively solid");
   const er=rankOf(tf.elo,"elo");
   const ageTxt = tf.avg_age ? (zh?` 阵容平均 ${tf.avg_age} 岁。`:` Squad avg age ${tf.avg_age}.`) : "";
-  return zh?`${tName(tf._name)} 是${tier}(ELO 全场第 ${er}),整体偏${style}。模型给出约 ${T.toFixed(1)}% 夺冠、${((tf.advance||0)*100).toFixed(0)}% 小组出线。${ageTxt}`
-          :`${tf._name} is ${tier} (ELO #${er}), ${style}. The model gives ~${T.toFixed(1)}% to win it all and ${((tf.advance||0)*100).toFixed(0)}% to advance.${ageTxt}`;
+  return zh?`${tName(tf._name)} 是${tier}(ELO 全场第 ${er}),整体偏${style}。综合(模型+市场)约 ${T.toFixed(1)}% 夺冠、${((tf.advance||0)*100).toFixed(0)}% 小组出线。${ageTxt}`
+          :`${tf._name} is ${tier} (ELO #${er}), ${style}. Blended (model+market) ~${T.toFixed(1)}% to win it all and ${((tf.advance||0)*100).toFixed(0)}% to advance.${ageTxt}`;
 }
 function stat(n,k){ return `<div class="stat"><div class="n">${n}</div><div class="k">${k}</div></div>`; }
 function openTeam(team){
@@ -752,10 +754,11 @@ function openTeam(team){
       <div><h3>${tName(team)}</h3><div class="role">${teamEval(tf)}</div></div></div>
     <div class="sect">${t.secOverall}</div>
     <div class="statgrid">
-      ${stat(pct1(tf.title),t.sTitle)}${stat(pct1(tf.final),t.sFinal)}
+      ${stat(pct1(tf.title_final!=null?tf.title_final:tf.title),t.sTitle)}${stat(pct1(tf.final),t.sFinal)}
       ${stat(pct1(tf.advance),t.sAdvance)}${stat(pct1(tf.r32),t.sR32)}</div>
     <div class="sect">${t.secFactors}</div>
     <ul class="factors">
+      ${tf.title_final!=null?`<li><b>${LANG==='zh'?'夺冠概率口径':'Title figure'}:</b> ${LANG==='zh'?'综合':'final'} ${(tf.title_final*100).toFixed(1)}% · ${LANG==='zh'?'裸模型':'raw model'} ${((tf.title||0)*100).toFixed(1)}% — ${LANG==='zh'?`已按市场锚定 ${Math.round(((DATA.title_anchor||{}).w_title||0)*100)}%,分歧/edge 见下方「夺冠 — 模型 vs 市场」`:`market-anchored ${Math.round(((DATA.title_anchor||{}).w_title||0)*100)}%; divergence in the model-vs-market panel`}</li>`:""}
       <li><b>${t.sElo}:</b> ${tf.elo} · ${t.rankN(rankOf(tf.elo,"elo"),N)} — ${LANG==='zh'?'基于全部国际比赛历史的实力评分(预测的主因子)':'strength from full international match history (the dominant input)'}</li>
       <li><b>${t.sAtk}/${t.sDef}:</b> ${tf.attack} / ${tf.defence} — ${LANG==='zh'?'Dixon-Coles 进攻/防守系数(近 8 年,时间加权)':'Dixon-Coles attack/defence (last 8 yrs, time-weighted)'}</li>
       ${tf.talent!=null?`<li><b>${LANG==='zh'?'阵容天赋':'Squad talent'}:</b> ${tf.talent} · ${t.rankN(rankOf(tf.talent,"talent"),Object.keys(DATA.team_factors).length)} — ${LANG==='zh'?'球员所在俱乐部 Elo 均值(clubelo,身价代理,修正纯战绩低估)':'mean club Elo of the squad (clubelo, a market-value proxy that corrects results-only bias)'}</li>`:""}

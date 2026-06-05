@@ -45,3 +45,6 @@ data/fc25_players.csv
 
 # football-data schedule cache (regenerable, refreshed live by review)
 data/fd_matches.json
+
+# Claude Code local preview/dev config
+.claude/

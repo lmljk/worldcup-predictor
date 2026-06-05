@@ -20,6 +20,7 @@ from . import data_loader, paths
 TALENT_WEIGHT = 0.10
 # Weight of the live market in the per-match ensemble (market is hard to beat → high).
 MARKET_WEIGHT = 0.60
+W_TITLE_MAX = 0.60   # max weight of the title-market anchor (pre-tournament; fades as books open)
 
 
 def _cmd_fetch(args):
@@ -608,6 +609,29 @@ def _cmd_publish(args):
             )
             data["market_title"] = mk
             data["title_comparison"] = comparison
+
+            # ---- title-level market anchor (with fade-out) ----
+            # Pre-tournament the only live market is the title book, so anchor the headline
+            # title probability toward it (the model overrates top-ELO sides like Argentina the
+            # market discounts for aging). Raw model + edge stay in title_comparison untouched.
+            # Fade-out: as per-match books open (more fixtures carry market_1x2) the Monte Carlo
+            # itself drifts toward market, so the direct title anchor decays to 0 to avoid
+            # double-anchoring. coverage=0 → w=W_TITLE_MAX; coverage=1 → w=0.
+            preds_all = data.get("predictions", [])
+            covered = sum(1 for p in preds_all if isinstance(p, dict) and p.get("market_1x2"))
+            coverage = covered / (len(preds_all) or 1)
+            w_title = round(W_TITLE_MAX * (1 - coverage), 4)
+            blended = {t: (w_title * market[t] + (1 - w_title) * model_title.get(t, 0.0))
+                          if t in market else model_title.get(t, 0.0)
+                       for t in teams}
+            s = sum(blended.values()) or 1.0
+            title_final = {t: round(v / s, 5)
+                           for t, v in sorted(blended.items(), key=lambda x: -x[1])}
+            data["title_final"] = title_final
+            data["title_anchor"] = {"w_title": w_title, "w_title_max": W_TITLE_MAX,
+                                    "coverage": round(coverage, 3)}
+            for t, v in data.get("team_factors", {}).items():
+                v["title_final"] = title_final.get(t)
 
     # ---- probability movement tracking (odds drift = the public footprint of insider info) ----
     # Snapshot today's model + market title probs; movement is computed vs ~7 entries ago.

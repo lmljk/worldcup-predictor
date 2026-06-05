@@ -392,3 +392,25 @@ the data gives the "won't repeat" claim no support for *this* team. Argentina's 
 market 8.6% gap is an aging/ELO strength-estimate issue, to be pulled down by live market-anchoring
 once books open — not by hand-editing on a falsified narrative. Tool:
 `skill/backtest/ablation_holder.py`.
+
+## Run 18 — title-level market anchor with fade-out (architecture, not a backtest)
+
+Follow-up to the Argentina question (Runs 2/17): the headline title number was the *raw*
+Monte Carlo, which overrates top-ELO sides the market discounts for aging (Argentina model
+22.5% vs market 8.5%, the board's biggest divergence). Per-match market anchoring (MARKET_WEIGHT
+0.60) only activates once per-match books open, but the **title book is already live** — it was
+only being shown for comparison, not folded into the headline.
+
+Fix (publish step): the displayed title probability is now
+`title_final = w·market + (1−w)·model`, renormalised. The **raw model + edge stay untouched** in
+the model-vs-market panel, so the independent signal is fully preserved (Argentina still shows
+22.5% / +14.0% there). **Fade-out:** `w = W_TITLE_MAX·(1−coverage)` where coverage = fraction of
+fixtures carrying a live per-match market (`market_1x2`). Pre-tournament coverage=0 → w=0.60; as
+books open the Monte Carlo itself drifts to market, so the direct title anchor decays to 0,
+avoiding double-anchoring. W_TITLE_MAX=0.60 (matches MARKET_WEIGHT).
+
+Effect (coverage 0, w=0.60): Argentina 22.5% → **14.1%** (toward, not to, market 8.5%); France
+7.6% → 12.4% (anchor lifts *up* where the model under-rates — works both directions); distribution
+still sums to 1. Deliberately does **not** close the gap (Run 3 principle: erasing it = reproducing
+the market). Dashboard headline + team cards show the blended figure with a "60% market-anchored"
+note; raw model remains one panel away.
