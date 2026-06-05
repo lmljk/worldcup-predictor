@@ -55,6 +55,19 @@ math (de-vig, edge, Kelly), so it has no hard dependency on third-party data pac
 [`machina-sports/sports-skills`](https://github.com/machina-sports/sports-skills) (MIT) is supported
 as an optional enhancement for richer injury/xG/lineup data when installed.
 
+## Optional paid upgrades
+
+Everything above runs free. If you want to strengthen the **market-anchor** layer, there is exactly
+one upgrade worth paying for — and one popular source that is deliberately *not* recommended.
+
+| Upgrade | Verdict | Why |
+|---------|---------|-----|
+| **Pinnacle closing line** (via [The Odds API](https://the-odds-api.com) Business tier, ~$99) | ✅ **recommended** | Pinnacle's closing odds are the academic gold standard for sharpness — a low-margin book that moves on sharp money, not public sentiment. It is the single best signal you can add to the consensus anchor. Drop-in: set `ODDS_API_KEY` in `.env` and the loader picks it up; no model change needed. |
+| **Macau odds / 澳门盘 (澳彩, Macau Slot)** | ❌ **not recommended** | A retail-facing Asian-Handicap book whose line reflects (Chinese) public money, **not** sharper than Pinnacle's close. It would add a correlated, public-biased signal — noise, not alpha. It also has no free/clean API (only ToS-gray scraping) and no free historical archive, so it **cannot be walk-forward validated** under this repo's "a factor must beat baseline to be adopted" rule. Same reasoning rules out other retail Asian books. |
+
+The principle: pay for **sharpness and orthogonality** (Pinnacle's close), not for *more of the same*
+retail signal the consensus already contains.
+
 ## Setup
 
 ```bash
