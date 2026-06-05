@@ -214,3 +214,46 @@ Group J + soft quadrant lifts its model prob; market edge still flags any overra
   they appear, wire `fetch_polymarket` match markets → de-vig → blend into per-match predict.
 - Per-factor ablation (altitude/rest/travel/injury) once context layer is wired.
 - Calibration curves + isotonic fit.
+
+## Run 12 — rest-day differential: TESTED and VALIDATED (kept modest)
+
+User asked which of {injuries, motivation, venue, style-counter, yellow-cards, rotation}
+can become free, backtest-validated factors. Most were already settled (venue=Run 4 adopted;
+motivation/importance=Run 9 rejected; style-counter/coach=Run 10 rejected as un-free;
+injuries+rotation+suspensions = match-day only, via confirmed-lineup absences). The one
+genuinely new, free, walk-forward-testable factor was **rest-day differential** — until now
+only an *assumed* prior in `context.py`, never validated.
+
+Walk-forward, look-ahead free (majors 2014-2023, n=673; each team's rest = days since their
+previous played match strictly before the date; shorter-rested side's λ nudged down). 8 param
+configs:
+
+| per_day | cap | fired | baseline RPS | rest RPS | Δ |
+|---------|-----|-------|--------------|----------|------|
+| 0.010 | 0.06 | 123 | 0.19114 | 0.19107 | −0.00007 |
+| 0.015 | 0.06 | 123 | 0.19114 | 0.19106 | −0.00008 |
+| 0.025 | 0.10 | 123 | 0.19114 | 0.19103 | −0.00011 |
+| 0.040 | 0.10 | 123 | 0.19114 | 0.19099 | −0.00015 |
+
+**Findings:** rest-adjustment beats baseline in **all 8 configs**, monotonically improving
+with penalty size — a consistent, real (if small) signal, the mirror image of Run 9's
+importance (8/8 *worse*). But the magnitude is ~0.0001 RPS, ~10× smaller than adopted factors
+(talent / FC / 3-yr window ≈ 0.001–0.002), and only 18% of major-tournament matches fire
+(FIFA spaces rest evenly). **Decision: promote rest-day from "assumed prior" to
+"backtest-validated factor", but keep the existing conservative magnitude (per_day=0.015,
+cap=0.06).** Not cranked to the strongest config: monotonic-better on a single sample is the
+overfitting trap the doctrine warns against; the conservative setting is inside the tested-good
+range and never hurts.
+
+**Six-factor verdict (final):**
+| factor | free data | status |
+|--------|-----------|--------|
+| venue (altitude/travel) | yes | ADOPTED (Run 4) |
+| rest/fatigue | yes | ADOPTED, now validated (Run 12) |
+| motivation/importance | yes | REJECTED (Run 9, hurt) |
+| style-counter / coach | no free rating | REJECTED (Run 10, would fabricate) |
+| injuries | live only | match-day via confirmed-lineup absences |
+| rotation | live only | match-day via confirmed lineups |
+| yellow-cards / suspension | no historical | suspension folded into match-day absences |
+
+Tool: `skill/backtest/ablation_rest.py` (reusable).
