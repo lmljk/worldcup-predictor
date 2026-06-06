@@ -646,8 +646,9 @@ function render(){
   document.getElementById("t-title").textContent=t.title;
   document.getElementById("t-tag").textContent=t.tag;
   {const ta=DATA.title_anchor||{}; const wp=ta.w_title!=null?Math.round(ta.w_title*100):null;
+   const st=ta.stale?(LANG==='zh'?` · ⚠️ 市场暂用 ${ta.stale_from} 快照`:` · ⚠️ stale market (${ta.stale_from})`):"";
    document.getElementById("t-title-prob").textContent=t.titleProb+(wp!=null&&wp>0
-     ?(LANG==='zh'?` · 市场锚定 ${wp}%(裸模型+edge 见下方对比)`:` · ${wp}% market-anchored (raw model + edge below)`):"");}
+     ?(LANG==='zh'?` · 市场锚定 ${wp}%(裸模型+edge 见下方对比)`:` · ${wp}% market-anchored (raw model + edge below)`):"")+st;}
   document.getElementById("t-r32").textContent=t.r32;
   document.getElementById("t-cmp").textContent=t.cmp;
   const nsrc=(DATA.market_title||{}).n_sources, srcs=(DATA.market_title||{}).sources;

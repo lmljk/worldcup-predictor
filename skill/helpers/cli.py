@@ -578,9 +578,11 @@ def _cmd_publish(args):
     }
     # Market anchor: Polymarket title odds vs our Monte Carlo (model-vs-market + edge).
     model_title = sim.get("title_probability", {})
+    market_live = {}   # the LIVE fetch (empty on failure) — recorded honestly in history
     if model_title:
         teams = set(model_title)
         mk = data_loader.fetch_polymarket_winner(team_filter=teams)
+        market, stale, stale_from = {}, False, None
         if "implied_title_prob" in mk:
             market = dict(mk["implied_title_prob"])
             # multi-market consensus: average every source that quotes a team, then renormalise
@@ -600,6 +602,23 @@ def _cmd_publish(args):
                 mk["sources"] = "+".join(extra)
                 mk["n_sources"] = len(extra)
                 mk["implied_title_prob"] = dict(sorted(market.items(), key=lambda x: -x[1]))
+            market_live = dict(market)
+        else:
+            # live fetch empty (transient network/API failure) → reuse the most recent
+            # non-empty market snapshot so the headline anchor doesn't regress to raw model
+            # (observed 2026-06-06: a failed auto-run dropped the anchor, Spain→Argentina #1).
+            hf = paths.DATA / "history.json"
+            prior = json.loads(hf.read_text()) if hf.exists() else {}
+            for dt in sorted(prior, reverse=True):
+                pm = prior[dt].get("market") or {}
+                if pm:
+                    market, stale, stale_from = dict(pm), True, dt
+                    mk = {"implied_title_prob": dict(sorted(market.items(), key=lambda x: -x[1])),
+                          "stale_from": dt}
+                    print(f"[market] live fetch empty — anchoring to stale snapshot from {dt}",
+                          file=sys.stderr)
+                    break
+        if market:
             comparison = sorted(
                 ({"team": t, "model": round(model_title.get(t, 0), 4),
                   "market": round(market.get(t, 0), 4),
@@ -629,7 +648,8 @@ def _cmd_publish(args):
                            for t, v in sorted(blended.items(), key=lambda x: -x[1])}
             data["title_final"] = title_final
             data["title_anchor"] = {"w_title": w_title, "w_title_max": W_TITLE_MAX,
-                                    "coverage": round(coverage, 3)}
+                                    "coverage": round(coverage, 3),
+                                    "stale": stale, "stale_from": stale_from}
             for t, v in data.get("team_factors", {}).items():
                 v["title_final"] = title_final.get(t)
 
@@ -637,8 +657,9 @@ def _cmd_publish(args):
     # Snapshot today's model + market title probs; movement is computed vs ~7 entries ago.
     hist_f = paths.DATA / "history.json"
     hist = json.loads(hist_f.read_text()) if hist_f.exists() else {}
-    mkt_now = (data.get("market_title", {}) or {}).get("implied_title_prob", {})
-    hist[data["report_date"]] = {"model": model_title, "market": mkt_now}
+    # record only the LIVE fetch (empty on a miss) so history honestly logs failures and the
+    # stale-fallback above never feeds its own stale data back into the snapshot chain.
+    hist[data["report_date"]] = {"model": model_title, "market": market_live}
     hist = dict(sorted(hist.items())[-90:])  # keep last 90 days
     hist_f.write_text(json.dumps(hist, ensure_ascii=False))
     dates = sorted(hist)
