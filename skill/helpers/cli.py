@@ -20,7 +20,7 @@ from . import data_loader, paths
 TALENT_WEIGHT = 0.10
 # Weight of the live market in the per-match ensemble (market is hard to beat → high).
 MARKET_WEIGHT = 0.60
-W_TITLE_MAX = 0.60   # max weight of the title-market anchor (pre-tournament; fades as books open)
+W_TITLE_MAX = 0.60   # weight of the title-market anchor (constant; see publish step note)
 
 
 def _cmd_fetch(args):
@@ -119,6 +119,11 @@ def _cmd_predict(args):
             preds.append(_predict_one(model, row, squads, ctx.get(row["fixture_id"]), match_markets))
         except Exception as e:  # noqa: BLE001 — keep going on sparse teams
             preds.append({"fixture_id": row["fixture_id"], "error": str(e)})
+    # stamp the generation time (UTC) — live scoring only accepts forecasts proven to
+    # be strictly pre-kickoff, so each archived row must carry when it was made.
+    gen = pd.Timestamp.now(tz="UTC").isoformat(timespec="seconds")
+    for p in preds:
+        p["_generated_at"] = gen
     rep = paths.report_dir() / "predictions.json"
     rep.write_text(json.dumps(preds, indent=2, ensure_ascii=False, default=str))
     print(f"wrote {len(preds)} predictions -> {rep}")
@@ -387,8 +392,6 @@ def _cmd_market(args):
 def _cmd_review(args):
     """Daily live loop: refresh data, score completed matches vs our prior predictions,
     re-predict upcoming fixtures, re-simulate, and republish the dashboard."""
-    import glob
-
     from ..backtest import metrics
 
     data_loader.fetch_historical(force=True)  # pull latest scores
@@ -400,14 +403,9 @@ def _cmd_review(args):
         & hist["home_score"].notna()
     ].copy()
 
-    # index our past predictions by (date, home, away) -> probs
-    pred_index = {}
-    for f in sorted(glob.glob(str(paths.REPORTS / "*" / "predictions.json"))):
-        for p in json.loads(open(f).read()):
-            if p.get("error"):
-                continue
-            key = (p.get("date"), p.get("home"), p.get("away"))
-            pred_index.setdefault(key, p)  # earliest prediction wins
+    # latest proven-pre-kickoff forecast per match — same selection (and the same
+    # no-hindsight guard) as the dashboard scoreboard, so the two never disagree.
+    pred_index = _prekickoff_predictions()
 
     scored = []
     for r in played.itertuples():
@@ -478,41 +476,88 @@ def _schedule_payload(preds: list) -> list:
     return out
 
 
-def _accuracy_payload() -> dict:
-    """Live prediction scoreboard: every completed WC match vs our last pre-kickoff forecast.
+def _kickoff_index() -> dict:
+    """{frozenset({home, away}): [kickoff UTC, ...]} from the official schedule."""
+    ko: dict = {}
+    try:
+        for m in data_loader.fetch_fd_matches():
+            h = data_loader.fd_canon((m.get("homeTeam") or {}).get("name"))
+            a = data_loader.fd_canon((m.get("awayTeam") or {}).get("name"))
+            ts = m.get("utcDate")
+            if h and a and ts:
+                ko.setdefault(frozenset((h, a)), []).append(pd.Timestamp(ts))
+    except Exception:  # noqa: BLE001 — schedule cache optional; callers fall back
+        pass
+    return ko
 
-    For each played WC match we take the prediction from the most recent report dated on or
-    before the match date (no hindsight), mark the 1X2 pick correct/wrong, and aggregate an
-    overall accuracy-to-date (hit rate, RPS, Brier). Empty until the tournament starts.
+
+def _prekickoff_predictions() -> dict:
+    """(match_date, home, away) → latest archived forecast PROVEN to be pre-kickoff.
+
+    Guards the live scoreboard against hindsight: the same-day 23:00 auto-run
+    overwrites the 09:00 predictions file, so a row dated on the match day may have
+    been generated AFTER the result was known (and the model refit on it). A forecast
+    qualifies only if:
+      * it carries `_generated_at` and that instant is strictly before the official
+        kickoff (football-data utcDate; nearest fixture within ±1 day to absorb
+        local-date vs UTC-date drift), or
+      * the kickoff is unknown / the row is legacy (no timestamp) AND the report day
+        is strictly before the match day.
+    Among qualifying forecasts the LATEST wins — freshest information, no hindsight.
     """
     import glob
 
+    ko = _kickoff_index()
+    idx: dict = {}
+    for f in sorted(glob.glob(str(paths.REPORTS / "*" / "predictions.json"))):
+        rdate = f.split("/")[-2]
+        try:
+            rows = json.loads(open(f).read())
+        except (OSError, json.JSONDecodeError):
+            continue
+        for p in rows:
+            if p.get("error") or not p.get("date"):
+                continue
+            mdate = p["date"]
+            gen = p.get("_generated_at")
+            kicks = [t for t in ko.get(frozenset((p.get("home"), p.get("away"))), [])
+                     if abs((t.tz_localize(None) - pd.Timestamp(mdate)).days) <= 1]
+            if gen and kicks:
+                kick = min(kicks, key=lambda t: abs(t.tz_localize(None) - pd.Timestamp(mdate)))
+                ok = pd.Timestamp(gen) < kick
+            else:
+                ok = rdate < mdate     # can't prove pre-kickoff → strictly earlier day only
+            if not ok:
+                continue
+            key = (mdate, p.get("home"), p.get("away"))
+            eff = (rdate, gen or "")
+            if key not in idx or eff >= idx[key][0]:
+                idx[key] = (eff, p)
+    return {k: v[1] for k, v in idx.items()}
+
+
+def _accuracy_payload() -> dict:
+    """Live prediction scoreboard: every completed WC match vs our last pre-kickoff forecast.
+
+    Forecast selection (incl. the no-hindsight guard) lives in `_prekickoff_predictions`.
+    Marks the 1X2 pick correct/wrong and aggregates accuracy-to-date (hit rate, RPS).
+    Empty until the tournament starts.
+    """
     from ..backtest import metrics
 
     res = data_loader.fetch_historical()
     played = res[(res["tournament"] == paths.WC2026_TOURNAMENT)
                  & (res["date"] >= pd.Timestamp(paths.WC2026_START))
                  & res["home_score"].notna()].copy()
-    # index predictions by (matchdate, home, away) -> keep latest report date <= matchdate
-    idx = {}
-    for f in sorted(glob.glob(str(paths.REPORTS / "*" / "predictions.json"))):
-        rdate = f.split("/")[-2]
-        for p in json.loads(open(f).read()):
-            if p.get("error") or not p.get("date"):
-                continue
-            if rdate <= p["date"]:  # forecast made on/before kickoff day
-                key = (p["date"], p["home"], p["away"])
-                if key not in idx or rdate >= idx[key][0]:
-                    idx[key] = (rdate, p)
+    idx = _prekickoff_predictions()
 
     labels = lambda h, a: [f"{h} win", "Draw", f"{a} win"]
     by_match, rows = {}, []
     for r in played.itertuples():
         key = (str(r.date.date()), r.home_team, r.away_team)
-        hit = idx.get(key)
-        if not hit:
+        p = idx.get(key)
+        if not p:
             continue
-        p = hit[1]
         probs = np.array([p["p_home"], p["p_draw"], p["p_away"]])
         pick = int(np.argmax(probs))
         outcome = metrics.outcome_index(int(r.home_score), int(r.away_score))
@@ -650,17 +695,19 @@ def _cmd_publish(args):
             data["market_title"] = mk
             data["title_comparison"] = comparison
 
-            # ---- title-level market anchor (with fade-out) ----
-            # Pre-tournament the only live market is the title book, so anchor the headline
-            # title probability toward it (the model overrates top-ELO sides like Argentina the
-            # market discounts for aging). Raw model + edge stay in title_comparison untouched.
-            # Fade-out: as per-match books open (more fixtures carry market_1x2) the Monte Carlo
-            # itself drifts toward market, so the direct title anchor decays to 0 to avoid
-            # double-anchoring. coverage=0 → w=W_TITLE_MAX; coverage=1 → w=0.
+            # ---- title-level market anchor (constant weight) ----
+            # Anchor the headline title probability toward the live title book (the model
+            # overrates top-ELO sides like Argentina the market discounts for aging). Raw
+            # model + edge stay in title_comparison untouched. The weight is CONSTANT:
+            # an earlier fade-out tied to per-match book coverage was wrong — the Monte
+            # Carlo never ingests per-match markets (they only blend into the displayed
+            # per-match probs), so fading would have returned the headline to the raw
+            # model as books opened, the opposite of the intent. There is no double
+            # anchor; both sides converge naturally as real results accumulate.
             preds_all = data.get("predictions", [])
             covered = sum(1 for p in preds_all if isinstance(p, dict) and p.get("market_1x2"))
-            coverage = covered / (len(preds_all) or 1)
-            w_title = round(W_TITLE_MAX * (1 - coverage), 4)
+            coverage = covered / (len(preds_all) or 1)   # kept as transparency info only
+            w_title = W_TITLE_MAX
             blended = {t: (w_title * market[t] + (1 - w_title) * model_title.get(t, 0.0))
                           if t in market else model_title.get(t, 0.0)
                        for t in teams}

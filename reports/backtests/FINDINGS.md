@@ -538,3 +538,39 @@ curve-fit the market (the Run 3 anti-pattern). The market anchor already does th
 raw 28.2% → blended **16.3%**, ≈ the market's top team (15.9%). Discipline held: a suggestive 1X2
 signal did not justify a patch once the targeted knockout test cleared the sim. Tool:
 `skill/backtest/calibration_knockout.py`.
+
+## Run 24 — pre-tournament audit: 3 live-mode bugs fixed on opening day
+
+Full audit (3 parallel reviewers + manual deep-dive on the live path) the day the tournament
+starts. Model math and bracket encoding came back clean; the bugs were all in the **live loop**
+that activates tonight:
+
+**(1) The sim re-rolled played matches.** `montecarlo.run` sampled Poisson for every fixture —
+played ones included — so advance/title odds would have ignored real results, and knockout rows
+entering the dataset after Jun 27 would have polluted the group tables as phantom group matches.
+Fixed: played group fixtures pinned to actual scores in every sim; rows after `_GROUP_END` never
+enter the group table; played knockout ties pinned via 48×48 result matrices inside `_play`
+(actual score + winner, shootout winners from shootouts.csv); Golden Boot seeds actual scorers
+(own goals excluded) and allocates only *future* team goals by share. Verified: synthetic Mexico
+3-0 moves advance 0.830→0.932 (RSA 0.200→0.103); a pinned KO upset zeroes the loser's QF
+probability; seeded/unmatched scorers carried at their actual tallies.
+
+**(2) Live-accuracy hindsight contamination.** The scoreboard accepted forecasts with report-day
+≤ match-day, but the same-day 23:00 auto-run *overwrites* the 09:00 predictions file — for
+morning matches its rows are post-result forecasts from a model already refit on the score.
+Fixed: every archived prediction row now carries `_generated_at` (UTC); selection
+(`_prekickoff_predictions`, shared by the dashboard scoreboard and review.json so they can't
+disagree) only accepts forecasts proven strictly pre-kickoff vs the official utcDate (legacy /
+unknown-kickoff rows: strictly-earlier report day only), then takes the latest qualifier.
+Verified in a sandbox: a post-kickoff same-day row is rejected in favour of the prior day's
+forecast; a pre-kickoff same-day row correctly wins.
+
+**(3) Title-anchor fade-out premise was wrong (Run 18 self-correction).** The fade assumed the
+Monte Carlo drifts toward market as per-match books open — but the MC never ingests per-match
+markets (they only blend into displayed per-match probs), so rising coverage would have decayed
+w_title and returned the headline to the *raw* model: the opposite of the intent. Fixed: constant
+w_title = 0.60 (coverage kept as transparency info); both sides converge naturally on real
+results. No double anchor exists.
+
+Lesson: 23 runs of backtests validated the *math*; none exercised the *live data path* end to
+end. The audit did, one day before it mattered.
