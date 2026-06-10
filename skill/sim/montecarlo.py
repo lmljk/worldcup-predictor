@@ -58,6 +58,32 @@ OFFICIAL_GROUPS = {
 }
 _GI = {c: i for i, c in enumerate("ABCDEFGHIJKL")}
 
+# 2026 group stage runs Jun 11-27; the R32 starts Jun 28. Rows after this date are
+# knockout matches and must NEVER enter the group table.
+_GROUP_END = pd.Timestamp("2026-06-27")
+
+
+def _nm(s: str) -> str:
+    """Accent-insensitive name key (same convention as players/injuries matching)."""
+    import re
+    import unicodedata
+    s = unicodedata.normalize("NFD", str(s or "")).encode("ascii", "ignore").decode()
+    return re.sub(r"[^a-z]", "", s.lower())
+
+
+def _shootout_winners() -> dict:
+    """{(date, frozenset({a, b})): winner} from martj42 shootouts.csv (local, no network)."""
+    from ..helpers import paths
+    f = paths.HISTORICAL / "shootouts.csv"
+    if not f.exists():
+        return {}
+    try:
+        df = pd.read_csv(f)
+        return {(pd.Timestamp(r.date).date(), frozenset((r.home_team, r.away_team))): r.winner
+                for r in df.itertuples(index=False)}
+    except Exception:   # noqa: BLE001 — a corrupt optional file must not kill the sim
+        return {}
+
 # Official Round-of-32 slot map — match order 73..88 (index 0..15). Each slot is
 # ('W'|'RU', group) for winners/runners-up or ('3RD', eligible_groups) for the 8
 # third-place slots. Source: 2026 FIFA World Cup official knockout bracket.
@@ -132,7 +158,11 @@ def _rank_desc(rng, *keys) -> np.ndarray:
 
 
 def run(model, fixtures: pd.DataFrame, n: int = 50000, seed: int = 0,
-        squads: dict | None = None, gb_topk: int = 12, context: dict | None = None) -> dict:
+        squads: dict | None = None, gb_topk: int = 12, context: dict | None = None,
+        scorer_goals: dict | None = None) -> dict:
+    """`scorer_goals` (live mode): {(team, scorer_name): actual WC2026 goals so far} —
+    real goals are credited to their real scorers; only *future* team goals are
+    allocated by model share."""
     rng = np.random.default_rng(seed)
     fixture_teams = set(fixtures["home_team"]) | set(fixtures["away_team"])
     # use the official A..L draw when it matches the fixtures; else fall back
@@ -153,16 +183,36 @@ def run(model, fixtures: pd.DataFrame, n: int = 50000, seed: int = 0,
     gd = np.zeros((n, nt))
     gf = np.zeros((n, nt))
 
+    # ---- live conditioning: the sim must respect what has ALREADY happened ----
+    # Group fixtures with a recorded score are pinned to the actual result in every
+    # sim (no re-rolling reality); knockout rows (date after the group stage) are kept
+    # out of the group table and pinned inside the bracket walk via result matrices.
+    if official:
+        group_fx = fixtures[fixtures["date"] <= _GROUP_END]
+        ko_played = fixtures[(fixtures["date"] > _GROUP_END)
+                             & fixtures["home_score"].notna()]
+    else:
+        group_fx, ko_played = fixtures, fixtures.iloc[0:0]
+    actual_goals = np.zeros(nt)   # real goals already on the board, per team
+
     context = context or {}
-    for r in fixtures.itertuples():
+    for r in group_fx.itertuples():
         h, a = tid[r.home_team], tid[r.away_team]
-        neutral = bool(r.neutral)
-        ha = 0.0 if neutral else hadv
-        cx = context.get(getattr(r, "fixture_id", None), {})
-        lam = np.exp(inter + ha + atk[h] - dfc[a]) * cx.get("home_mult", 1.0)
-        mu = np.exp(inter + atk[a] - dfc[h]) * cx.get("away_mult", 1.0)
-        hg = rng.poisson(lam, n)
-        ag = rng.poisson(mu, n)
+        hs = getattr(r, "home_score", None)
+        if hs is not None and not pd.isna(hs):
+            # played match → deterministic across all sims
+            hg = np.full(n, int(hs), dtype=np.int64)
+            ag = np.full(n, int(r.away_score), dtype=np.int64)
+            actual_goals[h] += int(hs)
+            actual_goals[a] += int(r.away_score)
+        else:
+            neutral = bool(r.neutral)
+            ha = 0.0 if neutral else hadv
+            cx = context.get(getattr(r, "fixture_id", None), {})
+            lam = np.exp(inter + ha + atk[h] - dfc[a]) * cx.get("home_mult", 1.0)
+            mu = np.exp(inter + atk[a] - dfc[h]) * cx.get("away_mult", 1.0)
+            hg = rng.poisson(lam, n)
+            ag = rng.poisson(mu, n)
         hw, aw, dr = hg > ag, ag > hg, hg == ag
         pts[:, h] += 3 * hw + dr
         pts[:, a] += 3 * aw + dr
@@ -170,6 +220,31 @@ def run(model, fixtures: pd.DataFrame, n: int = 50000, seed: int = 0,
         gd[:, a] += ag - hg
         gf[:, h] += hg
         gf[:, a] += ag
+
+    # played-knockout result matrices (both orientations): winner id, actual goals.
+    # Inside _play, any simulated tie that reproduces a real played pairing is pinned.
+    res_w = np.full((nt, nt), -1, dtype=np.int64)
+    res_hg = np.full((nt, nt), -1, dtype=np.int64)
+    res_ag = np.full((nt, nt), -1, dtype=np.int64)
+    if len(ko_played):
+        shoot = _shootout_winners()
+        for r in ko_played.itertuples():
+            h, a = tid[r.home_team], tid[r.away_team]
+            hs, as_ = int(r.home_score), int(r.away_score)
+            if hs > as_:
+                w = h
+            elif hs < as_:
+                w = a
+            else:
+                wname = shoot.get((pd.Timestamp(r.date).date(),
+                                   frozenset((r.home_team, r.away_team))))
+                if wname is None or wname not in tid:
+                    continue   # drawn KO with no shootout record yet → leave unpinned
+                w = tid[wname]
+            res_w[h, a] = res_w[a, h] = w
+            res_hg[h, a], res_ag[h, a] = hs, as_
+            res_hg[a, h], res_ag[a, h] = as_, hs
+    ko_pinned = bool((res_w >= 0).any())
 
     reached = {k: np.zeros(nt) for k in
                ("R32", "R16", "QF", "SF", "final", "champion")}
@@ -213,17 +288,26 @@ def run(model, fixtures: pd.DataFrame, n: int = 50000, seed: int = 0,
 
     def _play(home, away):
         """One knockout round, vectorised: sample scorelines, resolve (penalties via a
-        strength-weighted coin), accumulate goals, return winner team-ids (n, k)."""
+        strength-weighted coin), accumulate goals, return winner team-ids (n, k).
+        Pairings that were ACTUALLY played are pinned to the real score and winner."""
         lam = np.exp(inter + atk[home] - dfc[away])
         mu = np.exp(inter + atk[away] - dfc[home])
         hg = rng.poisson(lam)
         ag = rng.poisson(mu)
+        if ko_pinned:
+            ph, pa = res_hg[home, away], res_ag[home, away]
+            hg = np.where(ph >= 0, ph, hg)
+            ag = np.where(ph >= 0, pa, ag)
         ri = np.repeat(np.arange(n), home.shape[1])
         np.add.at(tour_goals, (ri, home.ravel()), hg.ravel())
         np.add.at(tour_goals, (ri, away.ravel()), ag.ravel())
         coin = rng.random(hg.shape) < (lam / (lam + mu))
         hw = (hg > ag) | ((hg == ag) & coin)
-        return np.where(hw, home, away)
+        win = np.where(hw, home, away)
+        if ko_pinned:
+            pw = res_w[home, away]
+            win = np.where(pw >= 0, pw, win)
+        return win
 
     if official:
         # build R32 home/away (n,16) from the official slot map (match order 73..88)
@@ -281,22 +365,52 @@ def run(model, fixtures: pd.DataFrame, n: int = 50000, seed: int = 0,
     if squads:
         from ..model.players import goal_shares
 
-        p_names, p_teams_idx, p_shares = [], [], []
+        # actual WC goals by (team, normalised scorer) → (display name, goals)
+        sg: dict[tuple[str, str], tuple[str, int]] = {}
+        for (tm_, nm_), g_ in (scorer_goals or {}).items():
+            sg[(tm_, _nm(nm_))] = (nm_, int(g_))
+
+        p_names, p_teams_idx, p_shares, p_seed = [], [], [], []
         for ti, tm in enumerate(teams):
             sq = squads.get(tm)
             if not sq:
                 continue
-            shares = sorted(goal_shares(sq), key=lambda x: -x[2])[:gb_topk]
-            for name, _pos, share in shares:
+            allsh = goal_shares(sq)
+            picked = sorted(allsh, key=lambda x: -x[2])[:gb_topk]
+            chosen = {name for name, _p, _s in picked}
+            actual = {k[1]: v for k, v in sg.items() if k[0] == tm}
+            if actual:
+                # anyone who has REALLY scored at this WC must be on the board,
+                # even if his model share didn't make the top-k cut
+                for name, _pos, share in allsh:
+                    if name not in chosen and _nm(name) in actual:
+                        picked.append((name, _pos, share))
+                        chosen.add(name)
+            matched_keys = set()
+            for name, _pos, share in picked:
+                seed_g = actual.get(_nm(name), (None, 0))[1] if actual else 0
+                if seed_g:
+                    matched_keys.add(_nm(name))
                 p_names.append(name)
                 p_teams_idx.append(ti)
                 p_shares.append(share)
+                p_seed.append(seed_g)
+            # real scorers whose name didn't match the squad list: keep their goals
+            # (share 0 → seeded tally only, no future allocation)
+            for nkey, (disp, g_) in actual.items():
+                if nkey not in matched_keys:
+                    p_names.append(disp)
+                    p_teams_idx.append(ti)
+                    p_shares.append(0.0)
+                    p_seed.append(g_)
         if p_names:
             P = len(p_names)
+            # only goals NOT yet on the board are allocated by share
+            future_goals = np.clip(tour_goals - actual_goals[None, :], 0, None)
             pg = np.zeros((n, P), dtype=np.int16)
             for j in range(P):
-                lam = p_shares[j] * tour_goals[:, p_teams_idx[j]]
-                pg[:, j] = rng.poisson(lam).astype(np.int16)
+                lam = p_shares[j] * future_goals[:, p_teams_idx[j]]
+                pg[:, j] = (p_seed[j] + rng.poisson(lam)).astype(np.int16)
             winners = pg.argmax(axis=1)  # one Golden Boot winner per sim
             win_counts = np.bincount(winners, minlength=P)
             exp_goals = pg.mean(axis=0)

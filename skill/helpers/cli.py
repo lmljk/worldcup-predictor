@@ -126,7 +126,28 @@ def _cmd_predict(args):
     sim = None
     if args.simulate:
         from ..sim import montecarlo
-        sim = montecarlo.run(model, fixtures, n=args.sims, squads=squads, context=ctx)
+
+        # live mode: actual WC2026 goals per (team, scorer) — real goals go to real
+        # scorers, only future goals are allocated by model share. Own goals excluded
+        # (they count for the team, not the Golden Boot).
+        scorer_goals: dict = {}
+        try:
+            gs = data_loader.fetch_goalscorers()
+            wc = gs[pd.to_datetime(gs["date"]) >= pd.Timestamp(paths.WC2026_START)].copy()
+            if "own_goal" in wc.columns:
+                wc = wc[~wc["own_goal"].astype(str).str.upper().isin(("TRUE", "1", "T"))]
+            for r in wc.itertuples(index=False):
+                if isinstance(r.scorer, str) and isinstance(r.team, str):
+                    k = (r.team, r.scorer)
+                    scorer_goals[k] = scorer_goals.get(k, 0) + 1
+            if scorer_goals:
+                print(f"[live] seeded {sum(scorer_goals.values())} actual WC goals "
+                      f"for {len(scorer_goals)} scorers")
+        except Exception as e:  # noqa: BLE001 — seeding is an enhancement, never fatal
+            print(f"[scorer seed skipped] {e}", file=sys.stderr)
+
+        sim = montecarlo.run(model, fixtures, n=args.sims, squads=squads, context=ctx,
+                             scorer_goals=scorer_goals)
         (paths.report_dir() / "simulation.json").write_text(
             json.dumps(sim, indent=2, ensure_ascii=False)
         )
