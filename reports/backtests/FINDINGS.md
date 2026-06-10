@@ -574,3 +574,16 @@ results. No double anchor exists.
 
 Lesson: 23 runs of backtests validated the *math*; none exercised the *live data path* end to
 end. The audit did, one day before it mattered.
+
+**Run 24 addendum — medium/low items closed (same day):** (#4) Polymarket per-match parsing now
+maps prices BY OUTCOME LABEL (skips any market whose three labels can't be unambiguously matched
+to home/draw/away — silently missing beats silently flipped) and `_predict_one` looks up both key
+orientations, reversing [H,D,A] on a flipped hit; The Odds API path was already label-safe.
+(#5) Cache writes are atomic: downloaded CSVs are validated in memory (required columns + minimum
+rows) before a tmp-file `os.replace`, falling back to the existing cache on a bad pull — verified
+by feeding a garbage download against the live cache; scraped JSON caches (squads/clubelo/fd)
+write via tmp+rename. (#6) was already unified by the fix-#2 shared selector. Low: four per-source
+team-alias dicts merged into one authoritative `helpers/teamnames.py` (gaps like "Cabo Verde"/
+"Cape Verde Islands" now covered everywhere; 10 spot-checks + FC25 join verified); `market.blend`
+guards zero/NaN inputs (uniform fallback); dashboard — bracket slot tags escaped, champion
+null-guard, search-hit bounds check, dead `playerCell` removed, modal width responsive.

@@ -21,12 +21,8 @@ from ..helpers import paths
 
 FC25_CSV = paths.DATA / "fc25_players.csv"
 
-# FC25 Nation label -> our dataset team name (where they differ).
-NATION_ALIAS = {
-    "Korea Republic": "South Korea", "Cape Verde Islands": "Cape Verde",
-    "Congo DR": "DR Congo", "Côte d'Ivoire": "Ivory Coast", "IR Iran": "Iran",
-    "Czechia": "Czech Republic", "Türkiye": "Turkey", "USA": "United States",
-}
+# FC25 Nation labels map through the shared authoritative alias table.
+from ..helpers.teamnames import canon as _nation_canon
 POS_GROUP = {  # FC25 Position -> group
     "GK": "GK",
     "CB": "DEF", "LB": "DEF", "RB": "DEF", "LWB": "DEF", "RWB": "DEF",
@@ -53,7 +49,7 @@ def load_fc25() -> pd.DataFrame:
         import requests
         FC25_CSV.write_bytes(requests.get(FC25_SOURCE, timeout=60).content)
     df = pd.read_csv(FC25_CSV)
-    df["nation_std"] = df["Nation"].map(lambda x: NATION_ALIAS.get(x, x))
+    df["nation_std"] = df["Nation"].map(_nation_canon)
     df["grp"] = df["Position"].map(POS_GROUP).fillna("MF")
     df["nkey"] = df["Name"].map(_norm)
     return df

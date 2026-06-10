@@ -247,9 +247,17 @@ def _predict_one(model, row, squads=None, ctx=None, match_markets=None) -> dict:
     mp["country"] = row.get("country")
     if ctx and ctx.get("notes"):
         mp["context"] = ctx["notes"]
-    # market-anchored ensemble: blend live 1X2 market into the model when available
-    if match_markets and (home, away) in match_markets:
-        p_mkt = np.array(match_markets[(home, away)], dtype=float)
+    # market-anchored ensemble: blend live 1X2 market into the model when available.
+    # Look up BOTH orientations — a book may list our away side first; flipping the
+    # key reverses [home, draw, away].
+    mkt_probs = None
+    if match_markets:
+        if (home, away) in match_markets:
+            mkt_probs = match_markets[(home, away)]
+        elif (away, home) in match_markets:
+            mkt_probs = match_markets[(away, home)][::-1]
+    if mkt_probs is not None:
+        p_mkt = np.array(mkt_probs, dtype=float)
         p_model = np.array([mp["p_home"], mp["p_draw"], mp["p_away"]])
         p_final = mkt.blend(p_mkt, p_model, w=MARKET_WEIGHT)
         mp["p_home"], mp["p_draw"], mp["p_away"] = (round(float(x), 4) for x in p_final)

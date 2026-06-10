@@ -20,13 +20,44 @@ paths.load_dotenv()
 UA = {"User-Agent": "worldcup-predictor/0.1 (+https://github.com/rrclaw)"}
 
 
+def _refresh_csv(url: str, dest, required: set, min_rows: int) -> None:
+    """Download → VALIDATE in memory → atomic replace. A truncated/garbled download
+    must never overwrite a good cache (the live loop force-refetches twice a day;
+    one bad pull would otherwise brick the whole pipeline). On failure: keep the old
+    cache and warn; raise only if there is no cache at all to fall back to."""
+    import io
+    import os
+    import sys as _sys
+    try:
+        r = requests.get(url, headers=UA, timeout=60)
+        r.raise_for_status()
+        df = pd.read_csv(io.BytesIO(r.content))
+        if not required.issubset(df.columns) or len(df) < min_rows:
+            raise ValueError(f"validation failed: cols={list(df.columns)[:6]} rows={len(df)}")
+        tmp = dest.with_suffix(dest.suffix + ".tmp")
+        tmp.write_bytes(r.content)
+        os.replace(tmp, dest)
+    except Exception as e:  # noqa: BLE001 — degrade to cache, never corrupt it
+        if dest.exists():
+            print(f"[refresh failed, keeping cached {dest.name}] {e}", file=_sys.stderr)
+        else:
+            raise
+
+
+def _write_json_atomic(path, text: str) -> None:
+    """Partial-write-safe JSON cache write (tmp + rename)."""
+    import os
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(text)
+    os.replace(tmp, path)
+
+
 def fetch_historical(force: bool = False) -> pd.DataFrame:
     """martj42 international results (1872-now) + WC2026 fixtures in one CSV."""
     csv = paths.HISTORICAL_RESULTS_CSV
     if force or not csv.exists():
-        r = requests.get(paths.MARTJ42_RESULTS_URL, headers=UA, timeout=60)
-        r.raise_for_status()
-        csv.write_bytes(r.content)
+        _refresh_csv(paths.MARTJ42_RESULTS_URL, csv, min_rows=10000,
+                     required={"date", "home_team", "away_team", "tournament"})
     df = pd.read_csv(csv)
     df["date"] = pd.to_datetime(df["date"], errors="coerce")
     df["neutral"] = df["neutral"].astype(str).str.upper().eq("TRUE")
@@ -54,9 +85,8 @@ def fetch_goalscorers(force: bool = False) -> pd.DataFrame:
     """martj42 goalscorers (date, team, scorer, penalty, own_goal) — free, no auth.
     Powers recent-form and penalty-taker signals for the player model."""
     if force or not GOALSCORERS_CSV.exists():
-        r = requests.get(MARTJ42_GOALSCORERS_URL, headers=UA, timeout=60)
-        r.raise_for_status()
-        GOALSCORERS_CSV.write_bytes(r.content)
+        _refresh_csv(MARTJ42_GOALSCORERS_URL, GOALSCORERS_CSV, min_rows=10000,
+                     required={"date", "team", "scorer"})
     df = pd.read_csv(GOALSCORERS_CSV)
     df["date"] = pd.to_datetime(df["date"], errors="coerce")
     for c in ("penalty", "own_goal"):
@@ -106,22 +136,10 @@ def fetch_weather(lat: float, lon: float, when: str) -> dict[str, Any]:
         return {"error": str(e)}
 
 
-# Polymarket uses slightly different country labels than the martj42 dataset.
-PM_NAME_ALIASES = {
-    "Bosnia-Herzegovina": "Bosnia and Herzegovina",
-    "USA": "United States",
-    "Turkiye": "Turkey",
-    "Türkiye": "Turkey",
-    "Congo DR": "DR Congo",
-    "Czechia": "Czech Republic",
-    "Cabo Verde": "Cape Verde",
-    "Ivory Coast": "Ivory Coast",
-    "Côte d'Ivoire": "Ivory Coast",
-}
-
-
 def _canon(team: str) -> str:
-    return PM_NAME_ALIASES.get(team, team)
+    """All sources share one authoritative alias table (helpers/teamnames.py)."""
+    from .teamnames import canon
+    return canon(team)
 
 
 def fetch_polymarket_winner(team_filter: set[str] | None = None) -> dict[str, Any]:
@@ -188,15 +206,8 @@ def fetch_polymarket(query: str = "World Cup", limit: int = 100) -> list[dict[st
 WIKI_SQUADS_URL = "https://en.wikipedia.org/wiki/2026_FIFA_World_Cup_squads"
 SQUADS_JSON = paths.DATA / "squads_wc2026.json"
 # Wikipedia heading names -> our dataset names (where they differ).
-WIKI_NAME_ALIASES = {
-    "IR Iran": "Iran", "Korea Republic": "South Korea", "United States": "United States",
-    "Côte d'Ivoire": "Ivory Coast", "Cape Verde": "Cape Verde",
-    "DR Congo": "DR Congo", "Curaçao": "Curaçao",
-}
-
-
 def _wiki_team(name: str) -> str:
-    return WIKI_NAME_ALIASES.get(name, name)
+    return _canon(name)
 
 
 def fetch_squads(force: bool = False, team_filter: set[str] | None = None) -> dict[str, list[dict]]:
@@ -253,7 +264,7 @@ def fetch_squads(force: bool = False, team_filter: set[str] | None = None) -> di
                                 "goals": int(goals), "club": club, "dob": dob, "age": age})
             if players:
                 data[team] = players
-        SQUADS_JSON.write_text(_json.dumps(data, ensure_ascii=False, indent=1))
+        _write_json_atomic(SQUADS_JSON, _json.dumps(data, ensure_ascii=False, indent=1))
 
     if team_filter:
         return {t: p for t, p in data.items() if t in team_filter}
@@ -281,7 +292,7 @@ def fetch_club_elo(force: bool = False) -> dict[str, float]:
             elo[row["Club"]] = round(float(row["Elo"]), 1)
         except (ValueError, KeyError):
             continue
-    CLUB_ELO_JSON.write_text(_json.dumps(elo, ensure_ascii=False))
+    _write_json_atomic(CLUB_ELO_JSON, _json.dumps(elo, ensure_ascii=False))
     return elo
 
 
@@ -370,17 +381,10 @@ def _fd_headers() -> dict:
 
 FD_MATCHES_JSON = paths.DATA / "fd_matches.json"
 # football-data.org nation labels -> our dataset names (where they differ).
-FD_NAME_ALIAS = {
-    "Czechia": "Czech Republic", "Korea Republic": "South Korea", "IR Iran": "Iran",
-    "Türkiye": "Turkey", "Côte d'Ivoire": "Ivory Coast", "Cape Verde Islands": "Cape Verde",
-    "Congo DR": "DR Congo", "Bosnia-Herzegovina": "Bosnia and Herzegovina",
-}
-
-
 def fd_canon(name: str | None) -> str | None:
     if not name:
         return None
-    return FD_NAME_ALIAS.get(name, name)
+    return _canon(name)
 
 
 def fetch_fd_matches(force: bool = False) -> list[dict[str, Any]]:
@@ -398,7 +402,7 @@ def fetch_fd_matches(force: bool = False) -> list[dict[str, Any]]:
         r.raise_for_status()
         ms = r.json().get("matches", [])
         if ms:
-            FD_MATCHES_JSON.write_text(_json.dumps(ms, ensure_ascii=False))
+            _write_json_atomic(FD_MATCHES_JSON, _json.dumps(ms, ensure_ascii=False))
         return ms
     except requests.RequestException:
         return _json.loads(FD_MATCHES_JSON.read_text()) if FD_MATCHES_JSON.exists() else []
@@ -476,9 +480,26 @@ def fetch_match_markets() -> dict[tuple, list[float]]:
                 if len(outs) == 3 and len(prices) == 3 and " vs" in title.lower():
                     teams = title.split(":")[-1].split(" vs")
                     if len(teams) >= 2:
+                        h_raw = teams[0].strip()
+                        a_raw = teams[1].split("–")[0].strip()
+                        h, a = _canon(h_raw), _canon(a_raw)
+                        # map prices BY OUTCOME LABEL — never trust positional order.
+                        # If the three labels can't be unambiguously matched to
+                        # home/draw/away, SKIP: a silently missing market degrades to
+                        # model-only; a silently flipped one corrupts the ensemble.
+                        lab = [str(o).strip().lower() for o in outs]
+                        di = next((i for i, l in enumerate(lab)
+                                   if "draw" in l or l in ("tie", "x")), None)
+                        def _idx(raw, can):
+                            hits = [i for i, l in enumerate(lab)
+                                    if l == raw.lower() or _canon(str(outs[i])) == can]
+                            return hits[0] if len(hits) == 1 else None
+                        hi_, ai_ = _idx(h_raw, h), _idx(a_raw, a)
+                        if di is None or hi_ is None or ai_ is None \
+                                or len({di, hi_, ai_}) != 3:
+                            continue
                         s = sum(prices) or 1
-                        _add((_canon(teams[0].strip()), _canon(teams[1].split("–")[0].strip())),
-                             [p / s for p in prices])
+                        _add((h, a), [prices[hi_] / s, prices[di] / s, prices[ai_] / s])
     except (requests.RequestException, ValueError):
         pass
     return out

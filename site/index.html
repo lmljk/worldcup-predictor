@@ -21,7 +21,7 @@
   .hero .wrap{position:relative;z-index:1;}
   .toprow{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;}
   h1{margin:0;font-size:27px;font-weight:750;letter-spacing:.2px;}
-  .tagline{color:#dce6ff;opacity:.95;font-size:13.5px;margin-top:5px;max-width:680px;}
+  .tagline{color:#dce6ff;opacity:.95;font-size:13.5px;margin-top:5px;max-width:min(680px,calc(100vw - 28px));}
   .updated{color:#cdd8f0;font-size:12px;opacity:.85;margin-top:8px;}
   .langtog{display:flex;background:rgba(0,0,0,.22);border:1px solid rgba(255,255,255,.25);
            border-radius:999px;overflow:hidden;font-size:13px;font-weight:600;}
@@ -392,7 +392,6 @@ function norm(s){ return (s||"").toLowerCase().normalize("NFD").replace(/[̀-ͯ]
 function esc(s){ return (s||"").replace(/"/g,"&quot;"); }
 /* clickable cells (event-delegated to avoid quote/accent escaping issues) */
 function teamCell(t){ return `<span class="tcell clk" data-team="${esc(t)}">${flag(t)}${tName(t)}</span>`; }
-function playerCell(n,t){ return `<span class="tcell clk" data-player="${esc(n)}" data-pteam="${esc(t)}">${n}</span>`; }
 /* extra search aliases: Chinese names + nicknames -> matched by substring */
 const TEAM_ALIAS={ "United States":"usa america 美国队", "South Korea":"korea 韩国队", "Netherlands":"holland 荷兰队",
   "England":"英格兰队", "Ivory Coast":"cote divoire", "DR Congo":"congo 刚果", "Czech Republic":"czechia 捷克队" };
@@ -617,8 +616,9 @@ function brkChip(team, isWin, wp, tag){
   if(!team) return "";
   const cls = isWin ? " win" : " lose";
   const pc = (isWin && wp!=null) ? `<span class="wp">${Math.round(wp*100)}%</span>` : "";
-  const tg = tag ? `<span class="slottag">${tag}</span>` : "";
-  return `<div class="chip${cls}" title="${esc(tName(team))}${tag?` — ${tag.replace(/1$/, LANG==='zh'?'组第一':' winner').replace(/2$/, LANG==='zh'?'组第二':' runner-up').replace(/3$/, LANG==='zh'?'组第三':' third')}`:""}">${flag(team)}<span class="nm">${brkLabel(team)}</span>${tg}${pc}</div>`;
+  const stag = tag ? esc(tag) : "";
+  const tg = stag ? `<span class="slottag">${stag}</span>` : "";
+  return `<div class="chip${cls}" title="${esc(tName(team))}${stag?` — ${stag.replace(/1$/, LANG==='zh'?'组第一':' winner').replace(/2$/, LANG==='zh'?'组第二':' runner-up').replace(/3$/, LANG==='zh'?'组第三':' third')}`:""}">${flag(team)}<span class="nm">${brkLabel(team)}</span>${tg}${pc}</div>`;
 }
 function brkTie(m){
   const mn = m.m ? `<div class="mnum">M${m.m}</div>` : "";
@@ -640,7 +640,8 @@ function bracketTree(bk){
         const cls=(rn==="R32"?"r32 ":"")+(ms.length===1?"single":""); return brkCol(ms,cls); };
   const leftCols  = order.map(rn=>colHTML(rn,"l")).join("");
   const rightCols = order.slice().reverse().map(rn=>colHTML(rn,"r")).join("");
-  const fin=(byName["Final"]||[])[0]||{}, t=L(), champ=bk.champion;
+  const fin=(byName["Final"]||[])[0]||{}, t=L(), champ=bk.champion||"";
+  if(!champ){ wrap.style.display="none"; head.style.display="none"; return; }
   const center=`<div class="center">
      <div class="champ"><div class="crown">🏆</div>
        <div class="cname">${flag(champ)}<span>${tName(champ)}</span></div>
@@ -727,7 +728,8 @@ function onSearch(q){
   box._hits=hits; box.className="results on";
 }
 function pick(i){
-  const h=document.getElementById("results")._hits[i];
+  const h=(document.getElementById("results")._hits||[])[i];
+  if(!h) return;
   document.getElementById("results").className="results";
   document.getElementById("search").value="";
   if(h.type==="team") openTeam(h.team); else openPlayer(h.name,h.team);

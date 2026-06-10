@@ -54,14 +54,18 @@ def polymarket_prob(yes_price: float) -> float:
 
 
 def blend(p_market: np.ndarray | None, p_model: np.ndarray, w: float) -> np.ndarray:
-    """P_final = w*market + (1-w)*model. If no market, fall back to model."""
-    p_model = np.asarray(p_model, dtype=float)
-    p_model = p_model / p_model.sum()
+    """P_final = w*market + (1-w)*model. If no market, fall back to model.
+    Degenerate inputs (zero/NaN sums) fall back to uniform rather than emitting NaN."""
+
+    def _safe_norm(p: np.ndarray) -> np.ndarray:
+        p = np.clip(np.nan_to_num(np.asarray(p, dtype=float)), 0.0, None)
+        s = p.sum()
+        return p / s if s > 0 else np.full(len(p), 1.0 / len(p))
+
+    p_model = _safe_norm(p_model)
     if p_market is None:
         return p_model
-    p_market = np.asarray(p_market, dtype=float)
-    p_market = p_market / p_market.sum()
-    out = w * p_market + (1.0 - w) * p_model
+    out = w * _safe_norm(p_market) + (1.0 - w) * p_model
     return out / out.sum()
 
 
