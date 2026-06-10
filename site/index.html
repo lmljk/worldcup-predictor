@@ -688,7 +688,7 @@ function render(){
   highlights(DATA);
   bracketTree(DATA.bracket);
   probTable(document.getElementById("title"), DATA.title_final||sim.title_probability, 16);
-  probTable(document.getElementById("r32"), sim.reach_knockout_R32, 16);
+  probTable(document.getElementById("r32"), sim.reach_knockout_R32, 32);
   renderGroups(sim.group_standings);
   accBanner(document.getElementById("accbanner"), DATA.live_accuracy);
   accTable(document.getElementById("acc"), DATA.live_accuracy);
