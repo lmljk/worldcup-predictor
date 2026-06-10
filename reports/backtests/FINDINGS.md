@@ -501,3 +501,40 @@ encoding against the official bracket (Wikipedia, 2026 knockout stage):
     (M73 A2vB2, M78 E2vI2, M83 K2vL2, M88 D2vG2) — new 48-team format, not a bug.
 Display fix: bracket chips now carry slot-provenance tags (E1/C2/A3) + official match numbers
 (M73…M104) so the structure is legible at a glance.
+
+## Run 23 — title over-concentration: INVESTIGATED, model VINDICATED (no patch)
+
+After Run 21's goal-scale fix the raw-model title odds looked over-peaked (Argentina 28.2% vs
+market 15.9%; top-3 51.8% vs 42.1%, though **top-8 matched market 79.8% vs 78.0%** — the excess
+is purely at the very top). Hypothesis: the corrected (higher) goal scale made knockout favourites
+win too easily, compounding over 7 rounds. Tested two ways:
+
+**(1) 1X2 reliability on the fixed model (935 majors):** ECE improved 0.0230 → **0.0158** (the fix
+*helped* overall calibration), global temperature T=1.000 (no blanket fix helps). BUT the
+high-prob tail still looked over-confident: [0.80,0.90) pred 0.837 act 0.795; [0.90,1.00) pred
+0.945 act **0.818** (n=11). Seemed to confirm the hypothesis.
+
+**(2) Knockout-advancement calibration — the decisive test (243 real WC/Euro/Copa knockout
+matches, advance prob = regulation win + draw·strength-coin, actual = result or shootout winner):**
+
+| pred advance | n | predicted | actual | gap |
+|--------------|---|-----------|--------|-----|
+| 0.5-0.6 | 76 | 0.545 | 0.513 | −0.032 |
+| 0.6-0.7 | 67 | 0.642 | 0.642 | 0.000 |
+| 0.7-0.8 | 66 | 0.740 | 0.727 | −0.013 |
+| 0.8-0.9 | 21 | 0.852 | 0.857 | +0.005 |
+| **0.9-1.0** | 13 | **0.929** | **0.923** | **−0.006** |
+
+Overall predicted 0.672 vs actual 0.658 (Δ −0.014), ECE **0.0144** — **well calibrated, including
+the high tail.** The 1X2-tail over-confidence is a *group-stage* artefact (strong-vs-minnow
+blowouts); in knockouts both sides are group survivors and the penalty-coin pulls extremes toward
+centre, so favourite-advance probs are accurate. **The knockout Monte Carlo is not over-confident.**
+
+**Conclusion: no variance correction.** The title over-concentration vs market is a *strength
+disagreement* (Run 2/17: ELO rates Argentina far above the market, which discounts aging), not a
+calibration defect — and the knockout sim that turns strength into a title number is sound. Adding
+a variance knob to force the model toward the market would break a well-calibrated simulation to
+curve-fit the market (the Run 3 anti-pattern). The market anchor already does the right thing:
+raw 28.2% → blended **16.3%**, ≈ the market's top team (15.9%). Discipline held: a suggestive 1X2
+signal did not justify a patch once the targeted knockout test cleared the sim. Tool:
+`skill/backtest/calibration_knockout.py`.
