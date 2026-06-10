@@ -466,3 +466,38 @@ confound: cold-climate = European = systematically stronger, so "cold team in he
 disadvantage. **Decision: no climate-mismatch factor.** Weather is now comprehensively dead — both
 the average effect (Run 19) and the differential (Run 20). Tool:
 `skill/backtest/ablation_climate_mismatch.py`.
+
+## Run 21 — CRITICAL FIX: goal-scale bug in DC fit (intercept lost the re-centring shift)
+
+User-spotted symptom: Golden Boot expected tallies absurdly low ("金靴不可能整届才进两球").
+Root cause in `dc.fit`: after MLE (last team pinned at 0 for identifiability), attack/defence
+were re-centred to mean-zero "for interpretability" — **without folding the removed means back
+into the intercept**. Since λ = exp(c + a − d), re-centring multiplies every λ by exp(d̄ − ā)
+≈ 0.51: **the entire goal scale was silently halved.** Implied neutral-average total goals 1.43
+vs 2.79 actual in the training data; England vs Panama λ 1.63 (should be ~2.4).
+
+Fix (one line): `intercept += atk.mean() − dfc.mean()` before re-centring — λ now provably
+unchanged by the centring. Validation:
+  * **Goal calibration:** predicted avg total on the 3y window 2.777 vs actual 2.755 (was 1.43).
+  * **1X2 walk-forward (same window as Run 1):** DC RPS **0.1904 → 0.18523**, top-pick 52.8% →
+    **58.25%** — DC now **beats the ELO baseline (0.18992)** for the first time. The bug had
+    been inflating draw probabilities and handicapping DC in every earlier backtest.
+  * **Golden Boot:** E[winner tally] now **5.94 (median 6, p10-p90 4-8)** — matches history
+    (2006-2022 winners: 5/5/6/6/8). Marginal expectations: Haaland 3.09, Kane 2.65 (plausible
+    vs pre-tournament books). Added `winner_goals` (mean/median/p10/p90/distribution) to the
+    MC output and the dashboard, since the *winner's tally* — not any player's marginal mean —
+    is the number people sanity-check.
+
+## Run 22 — knockout bracket audit vs official (user challenge): encoding CONFIRMED correct
+
+User challenged the projected tree ("同组第一第二不该早遇 / 强队分区奇怪"). Audited the full
+encoding against the official bracket (Wikipedia, 2026 knockout stage):
+  * All 16 R32 slots (M73-88), R16 feeders (M89=W74vW77 … M96=W85vW87), QF (97=89v90, 98=93v94,
+    99=91v92, 100=95v96), SF, Final — **all match the official tree exactly.**
+  * Property test: every group's winner & runner-up land in **opposite halves** — they can only
+    re-meet in the **final**. The model's projected QFs (France-Morocco, Spain-Belgium,
+    Brazil-England, Argentina-Portugal) follow the official paths.
+  * What *looks* odd but is official 2026 design: four R32 ties pit two runners-up directly
+    (M73 A2vB2, M78 E2vI2, M83 K2vL2, M88 D2vG2) — new 48-team format, not a bug.
+Display fix: bracket chips now carry slot-provenance tags (E1/C2/A3) + official match numbers
+(M73…M104) so the structure is legible at a glance.

@@ -156,6 +156,9 @@
         width:106px;min-width:106px;position:relative;}
   .col.r32{width:110px;min-width:110px;}
   .tie{flex:1 1 auto;display:flex;flex-direction:column;justify-content:center;position:relative;}
+  .tie .mnum{font-size:9px;color:var(--mut);opacity:.65;line-height:1;margin:0 0 1px 2px;}
+  .chip .slottag{flex:0 0 auto;font-size:9px;color:var(--mut);opacity:.8;background:var(--card);
+        border:1px solid var(--line);border-radius:4px;padding:0 3px;line-height:1.5;}
   .chip{display:flex;align-items:center;gap:5px;font-size:12.5px;line-height:1.2;
         padding:4px 7px;margin:1.5px 0;border-radius:8px;background:var(--card2);
         border:1px solid var(--line);white-space:nowrap;overflow:hidden;position:relative;}
@@ -542,6 +545,13 @@ function ctxNote(c){ if(LANG!=="zh")return c;
 function bootTable(el, gb){
   const tsp=(gb||{}).top_scorer_probability, xg=(gb||{}).expected_goals||{};
   if(!tsp||!Object.keys(tsp).length){ el.innerHTML='<tr><td class="err">—</td></tr>'; return; }
+  const wg=(gb||{}).winner_goals;
+  if(wg&&wg.median!=null){
+    const note=document.getElementById('t-boot-note');
+    if(note) note.textContent+=(LANG==='zh'
+      ?` · 预计金靴得主进 ${wg.median} 球左右(80% 区间 ${wg.p10}-${wg.p90} 球)`
+      :` · projected winning tally ~${wg.median} goals (80% range ${wg.p10}-${wg.p90})`);
+  }
   const rows=Object.entries(tsp).slice(0,16);
   const max=rows[0][1];
   el.innerHTML="<tr><th>#</th><th>"+L().player+"</th><th>"+L().topscorer+"</th><th>"+L().xg+"</th><th></th></tr>"+
@@ -603,14 +613,16 @@ function highlights(d){
 }
 /* ---------- elimination tree (出线树) ---------- */
 function brkLabel(team){ return LANG==="zh" ? tName(team) : (CODE[team]||team); }
-function brkChip(team, isWin, wp){
+function brkChip(team, isWin, wp, tag){
   if(!team) return "";
   const cls = isWin ? " win" : " lose";
   const pc = (isWin && wp!=null) ? `<span class="wp">${Math.round(wp*100)}%</span>` : "";
-  return `<div class="chip${cls}" title="${esc(tName(team))}">${flag(team)}<span class="nm">${brkLabel(team)}</span>${pc}</div>`;
+  const tg = tag ? `<span class="slottag">${tag}</span>` : "";
+  return `<div class="chip${cls}" title="${esc(tName(team))}${tag?` — ${tag.replace(/1$/, LANG==='zh'?'组第一':' winner').replace(/2$/, LANG==='zh'?'组第二':' runner-up').replace(/3$/, LANG==='zh'?'组第三':' third')}`:""}">${flag(team)}<span class="nm">${brkLabel(team)}</span>${tg}${pc}</div>`;
 }
 function brkTie(m){
-  return `<div class="tie">${brkChip(m.a, m.winner===m.a, m.p)}${brkChip(m.b, m.winner===m.b, m.p)}</div>`;
+  const mn = m.m ? `<div class="mnum">M${m.m}</div>` : "";
+  return `<div class="tie">${mn}${brkChip(m.a, m.winner===m.a, m.p, m.ta)}${brkChip(m.b, m.winner===m.b, m.p, m.tb)}</div>`;
 }
 function brkCol(matches, cls){
   return `<div class="col ${cls}">${matches.map(brkTie).join("")}</div>`;

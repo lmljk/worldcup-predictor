@@ -301,6 +301,11 @@ def run(model, fixtures: pd.DataFrame, n: int = 50000, seed: int = 0,
             win_counts = np.bincount(winners, minlength=P)
             exp_goals = pg.mean(axis=0)
             order = np.argsort(win_counts)[::-1][:25]
+            # the winner's tally per sim — the user-facing "Golden Boot = how many goals"
+            # number (historical winners: 5-8). Distinct from each player's *marginal*
+            # expectation, which averages over early exits and is naturally much lower.
+            winner_tally = pg[np.arange(n), winners]
+            tally_hist = np.bincount(winner_tally, minlength=10)
             golden_boot = {
                 "top_scorer_probability": {
                     f"{p_names[j]} ({teams[p_teams_idx[j]]})": round(float(win_counts[j]) / n, 4)
@@ -309,6 +314,14 @@ def run(model, fixtures: pd.DataFrame, n: int = 50000, seed: int = 0,
                 "expected_goals": {
                     f"{p_names[j]} ({teams[p_teams_idx[j]]})": round(float(exp_goals[j]), 2)
                     for j in np.argsort(exp_goals)[::-1][:25]
+                },
+                "winner_goals": {
+                    "mean": round(float(winner_tally.mean()), 2),
+                    "median": int(np.median(winner_tally)),
+                    "p10": int(np.percentile(winner_tally, 10)),
+                    "p90": int(np.percentile(winner_tally, 90)),
+                    "distribution": {str(k): round(float(c) / n, 4)
+                                     for k, c in enumerate(tally_hist) if c > 0},
                 },
             }
 

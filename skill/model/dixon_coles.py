@@ -134,7 +134,11 @@ def fit(
     res = minimize(negll, x0, method="L-BFGS-B", bounds=bounds,
                    options={"maxiter": 400, "maxfun": 40000})
     intercept, hadv, atk, dfc, rho = unpack(res.x)
-    # centre strengths for interpretability
+    # centre strengths for interpretability — and fold the removed means back into the
+    # intercept so every lambda is unchanged: exp(c + a - d) = exp((c + ā - d̄) + (a-ā) - (d-d̄)).
+    # (Without this compensation the goal scale silently halves: every λ gets multiplied
+    # by exp(d̄ - ā). Caught 2026-06-06 — deflated Golden Boot tallies by ~2x.)
+    intercept = intercept + atk.mean() - dfc.mean()
     atk = atk - atk.mean()
     dfc = dfc - dfc.mean()
     return DCModel(

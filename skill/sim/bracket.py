@@ -82,16 +82,37 @@ def project(model, fixtures=None) -> dict:
     for k, (mi, _e) in enumerate(_THIRD_MATCHES):
         pair16[mi][1] = gi_team[assign[k]]   # third slot is the away side
 
+    # slot provenance tags (E1 = winner of Group E, C2 = runner-up, A3 = third) so the
+    # dashboard can show WHERE each team comes from — makes the official tree legible.
+    tag = {}
+    for code in OFFICIAL_GROUPS:
+        tag[winners[code]] = f"{code}1"
+        tag[runners[code]] = f"{code}2"
+    for k in range(len(_THIRD_MATCHES)):
+        t3 = gi_team[assign[k]]
+        tag.setdefault(t3, f"{'ABCDEFGHIJKL'[assign[k]]}3")
+
+    # official match numbers per round, in bracket display order
+    _MNUMS = [
+        [73 + i for i in _R32_ORDER],          # R32
+        [89, 90, 93, 94, 91, 92, 95, 96],      # R16 (display order after the climb)
+        [97, 98, 99, 100],                      # QF
+        [101, 102],                             # SF
+        [104],                                  # Final
+    ]
+
     # reorder into bracket top→bottom order → the whole tree is now adjacent pairs
     cur_pairs = [tuple(pair16[i]) for i in _R32_ORDER]   # 16 (home, away) ties
     rounds = []
-    for rname in _ROUND_NAMES:
+    for ri, rname in enumerate(_ROUND_NAMES):
         matches, nxt = [], []
-        for a, b in cur_pairs:
+        for mi, (a, b) in enumerate(cur_pairs):
             pa = _eff_win(model, a, b)
             win = a if pa >= 0.5 else b
             matches.append({"a": a, "b": b, "winner": win,
-                            "p": round(pa if win == a else 1 - pa, 4)})
+                            "p": round(pa if win == a else 1 - pa, 4),
+                            "m": _MNUMS[ri][mi],
+                            "ta": tag.get(a, ""), "tb": tag.get(b, "")})
             nxt.append(win)
         rounds.append({"round": rname, "matches": matches})
         cur_pairs = [(nxt[i], nxt[i + 1]) for i in range(0, len(nxt) - 1, 2)]
