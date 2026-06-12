@@ -263,6 +263,9 @@ def _predict_one(model, row, squads=None, ctx=None, match_markets=None) -> dict:
         p_final = mkt.blend(p_mkt, p_model, w=MARKET_WEIGHT)
         mp["p_home"], mp["p_draw"], mp["p_away"] = (round(float(x), 4) for x in p_final)
         mp["market_1x2"] = [round(float(x), 4) for x in p_mkt]
+        # pre-blend model probs, kept so the review can score market-only vs model-only
+        # vs blend on real matches — the forward evidence MARKET_WEIGHT never had.
+        mp["model_1x2"] = [round(float(x), 4) for x in p_model]
         mp["edge"] = [round(float(x), 4) for x in (p_final - p_mkt)]
     if squads:
         lam_h, lam_a = model.lambdas(home, away, neutral)
@@ -398,6 +401,36 @@ def _cmd_market(args):
         print(f"{t:<20}{m*100:7.1f}%{k*100:7.1f}%{(m-k)*100:+7.1f}%")
 
 
+# Calibration-drift gate (pre-declared, do not tune mid-tournament): judge only with
+# n >= DRIFT_MIN_N scored matches; flag YELLOW only if live mean RPS is significantly
+# WORSE than the walk-forward baseline (one-sided t-test, p < DRIFT_ALPHA). A yellow
+# flag triggers a human review that suspects data sources and the context layer first —
+# it never auto-changes weights or formulas (doctrine: changes must beat the backtest).
+DRIFT_MIN_N = 10
+DRIFT_ALPHA = 0.05
+
+
+def _drift_gate(rps_values: list[float]) -> dict:
+    """Live mean RPS vs the dashboard's headline walk-forward baseline."""
+    base = _backtest_headline()
+    out = {"baseline_rps": base.get("rps"), "baseline_window": base.get("window"),
+           "min_n": DRIFT_MIN_N, "alpha": DRIFT_ALPHA, "n": len(rps_values)}
+    if not base or len(rps_values) < DRIFT_MIN_N:
+        out["status"] = "warming"   # sample gate: no judgment below DRIFT_MIN_N
+        return out
+    from scipy import stats
+    live = np.asarray(rps_values, dtype=float)
+    sd = float(live.std(ddof=1))
+    if sd == 0:
+        out["status"] = "ok"
+        return out
+    t = (float(live.mean()) - float(base["rps"])) / (sd / np.sqrt(len(live)))
+    p = float(stats.t.sf(t, df=len(live) - 1))   # one-sided: worse (higher RPS) only
+    out.update(live_rps=round(float(live.mean()), 4), t=round(t, 3), p=round(p, 4),
+               status="YELLOW" if p < DRIFT_ALPHA else "ok")
+    return out
+
+
 def _cmd_review(args):
     """Daily live loop: refresh data, score completed matches vs our prior predictions,
     re-predict upcoming fixtures, re-simulate, and republish the dashboard."""
@@ -424,17 +457,31 @@ def _cmd_review(args):
             continue
         probs = np.array([p["p_home"], p["p_draw"], p["p_away"]])
         outcome = metrics.outcome_index(int(r.home_score), int(r.away_score))
-        scored.append({
+        row = {
             "date": key[0], "match": f"{r.home_team} {int(r.home_score)}-{int(r.away_score)} {r.away_team}",
             "rps": round(metrics.rps(probs, outcome), 4),
             "log_loss": round(metrics.log_loss(probs, outcome), 4),
             "hit": bool(int(np.argmax(probs)) == outcome),
-        })
+        }
+        # forward MARKET_WEIGHT ledger: where the forecast carried a live per-match
+        # market, score market-only and model-only too. Accumulates the evidence a
+        # future (post-tournament, pre-declared n) re-fit of w would need.
+        if p.get("market_1x2") and p.get("model_1x2"):
+            row["rps_market"] = round(metrics.rps(np.array(p["market_1x2"]), outcome), 4)
+            row["rps_model"] = round(metrics.rps(np.array(p["model_1x2"]), outcome), 4)
+        scored.append(row)
 
     live = {"matches_scored": len(scored)}
     if scored:
         live["mean_rps"] = round(float(np.mean([s["rps"] for s in scored])), 4)
         live["hit_rate"] = round(float(np.mean([s["hit"] for s in scored])), 4)
+        live["drift"] = _drift_gate([s["rps"] for s in scored])
+        ledg = [s for s in scored if "rps_market" in s]
+        if ledg:
+            live["w_eval"] = {"n": len(ledg),
+                              "mean_rps_blend": round(float(np.mean([s["rps"] for s in ledg])), 4),
+                              "mean_rps_market": round(float(np.mean([s["rps_market"] for s in ledg])), 4),
+                              "mean_rps_model": round(float(np.mean([s["rps_model"] for s in ledg])), 4)}
     review = {"reviewed_at": pd.Timestamp.now().isoformat(timespec="minutes"),
               "live_calibration": live, "detail": scored}
     (paths.report_dir() / "review.json").write_text(json.dumps(review, indent=2, ensure_ascii=False))
@@ -589,6 +636,7 @@ def _accuracy_payload() -> dict:
         summary["correct"] = sum(1 for x in rows if x["correct"])
         summary["hit_rate"] = round(summary["correct"] / len(rows), 4)
         summary["mean_rps"] = round(float(np.mean([x["rps"] for x in rows])), 4)
+        summary["drift"] = _drift_gate([x["rps"] for x in rows])
     return {"summary": summary, "results": rows, "by_match": by_match}
 
 
