@@ -61,6 +61,40 @@ def fetch_historical(force: bool = False) -> pd.DataFrame:
     df = pd.read_csv(csv)
     df["date"] = pd.to_datetime(df["date"], errors="coerce")
     df["neutral"] = df["neutral"].astype(str).str.upper().eq("TRUE")
+    return _overlay_fd_scores(df)
+
+
+def _overlay_fd_scores(df: pd.DataFrame) -> pd.DataFrame:
+    """The community CSV records WC2026 scores with a lag of days; football-data.org
+    has them at full time. Fill only score-less WC2026 rows from the fd cache so the
+    live review, scoreboard and model refits never wait on the CSV maintainer.
+    Matches on canonical team names with ±1 day tolerance (UTC vs local date drift)."""
+    try:
+        finished = {}
+        for m in fetch_fd_matches():
+            ft = (m.get("score") or {}).get("fullTime") or {}
+            if m.get("status") != "FINISHED" or ft.get("home") is None:
+                continue
+            h = fd_canon((m.get("homeTeam") or {}).get("name"))
+            a = fd_canon((m.get("awayTeam") or {}).get("name"))
+            if h and a:
+                finished[(h, a)] = (pd.Timestamp((m.get("utcDate") or "")[:10]),
+                                    int(ft["home"]), int(ft["away"]))
+        if not finished:
+            return df
+        mask = ((df["tournament"] == paths.WC2026_TOURNAMENT)
+                & (df["date"] >= pd.Timestamp(paths.WC2026_START))
+                & df["home_score"].isna())
+        for i in df.index[mask]:
+            key = (_canon(df.at[i, "home_team"]), _canon(df.at[i, "away_team"]))
+            rec = finished.get(key)
+            flipped = rec is None and finished.get((key[1], key[0]))
+            if flipped:
+                rec = (flipped[0], flipped[2], flipped[1])
+            if rec and abs((rec[0] - df.at[i, "date"]).days) <= 1:
+                df.at[i, "home_score"], df.at[i, "away_score"] = float(rec[1]), float(rec[2])
+    except Exception as e:  # noqa: BLE001 — overlay is best-effort, CSV alone still works
+        print(f"[fd score overlay skipped] {e}", file=_sys.stderr)
     return df
 
 
