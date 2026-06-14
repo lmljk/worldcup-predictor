@@ -474,6 +474,67 @@ def _n(s: str) -> str:
     return re.sub(r"[^a-z0-9]", "", s.lower())
 
 
+APIFOOTBALL_BASE = "https://v3.football.api-sports.io"
+WC_APIF_LEAGUE = 1       # API-Football: World Cup competition id
+WC_APIF_SEASON = 2026
+
+
+def _apif_headers() -> dict:
+    return {"x-apisports-key": os.environ.get("APIFOOTBALL_KEY", ""), **UA}
+
+
+def fetch_apifootball_lineups(date_iso: str) -> dict[tuple, dict]:
+    """Confirmed starting XIs for WC2026 fixtures on `date_iso`, from API-Football's
+    free tier (lineups publish ~20-40 min before kickoff; empty until then).
+
+    Returns {(home_canon, away_canon): {"home": {normalised XI names},
+    "away": {normalised XI names}}}. Needs a free api-sports.io key in
+    APIFOOTBALL_KEY; returns {} without it (so the pipeline is a no-op until the
+    key is set). Two calls per published fixture (fixtures list + lineups), so the
+    caller restricts this to the current match day to stay inside the 100/day quota.
+    """
+    from .teamnames import canon
+    if not os.environ.get("APIFOOTBALL_KEY"):
+        return {}
+    out: dict[tuple, dict] = {}
+    try:
+        r = requests.get(f"{APIFOOTBALL_BASE}/fixtures",
+                         params={"league": WC_APIF_LEAGUE, "season": WC_APIF_SEASON,
+                                 "date": date_iso},
+                         headers=_apif_headers(), timeout=30)
+        r.raise_for_status()
+        for fx in r.json().get("response", []):
+            fid = (fx.get("fixture") or {}).get("id")
+            tt = fx.get("teams") or {}
+            h = canon((tt.get("home") or {}).get("name"))
+            a = canon((tt.get("away") or {}).get("name"))
+            if not (fid and h and a):
+                continue
+            lr = requests.get(f"{APIFOOTBALL_BASE}/fixtures/lineups",
+                              params={"fixture": fid}, headers=_apif_headers(), timeout=30)
+            lr.raise_for_status()
+            xi: dict = {}
+            for side in lr.json().get("response", []):
+                tname = canon((side.get("team") or {}).get("name"))
+                names = {_n((p.get("player") or {}).get("name", ""))
+                         for p in (side.get("startXI") or [])}
+                names.discard("")
+                if tname and names:
+                    xi[tname] = names
+            if xi.get(h) or xi.get(a):
+                out[(h, a)] = {"home": xi.get(h, set()), "away": xi.get(a, set())}
+    except (requests.RequestException, ValueError, KeyError):
+        pass
+    return out
+
+
+def lineup_absences(squad: list[dict], xi_names: set) -> set[str]:
+    """Squad members NOT in the confirmed XI — empty if no XI (never invent absences)."""
+    if not xi_names:
+        return set()
+    return {p["name"] for p in squad if _n(p["name"]) not in xi_names}
+
+
 def fetch_match_markets() -> dict[tuple, list[float]]:
     """Per-match 1X2 market consensus (de-vigged) keyed by (home, away).
 

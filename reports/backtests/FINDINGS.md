@@ -587,3 +587,26 @@ team-alias dicts merged into one authoritative `helpers/teamnames.py` (gaps like
 "Cape Verde Islands" now covered everywhere; 10 spot-checks + FC25 join verified); `market.blend`
 guards zero/NaN inputs (uniform fallback); dashboard — bracket slot tags escaped, champion
 null-guard, search-hit bounds check, dead `playerCell` removed, modal width responsive.
+
+## Run 25 — match-day starting XI: free source gap found + wired (API-Football)
+
+User (tournament day 3): "the real starting lineups are out — did you update them into the model?"
+Audit answer: **no, on two counts.** (1) The lineup-absence channel (`fd_lineup_absences`,
+`match_scorers(absent=…)`) existed but was **never wired** — `_predict_one` called `match_scorers`
+without `absent`. (2) More fundamentally, **football-data.org's free tier returns no lineups** —
+verified live on the finished opener (Mexico v South Africa): the team object is only
+`[id,name,shortName,tla,crest]`, no `lineup`/`bench` (a paid-tier field). The earlier "match-day
+lineups feed the review loop" claim was design intent that free data can't honour — caught only
+by pressure-testing the live path.
+
+Fix (user chose API-Football free tier): `fetch_apifootball_lineups(date)` pulls confirmed XIs
+for the day's WC fixtures (api-sports.io free tier, ~20-40 min pre-kickoff), `_predict_one` now
+threads per-team `absent` into `match_scorers`, and benched players drop from **that match's**
+scorer prediction with the share redistributed (verified: benching Mbappé removes him from
+France's scorer list, Olise/Mateta/Barcola move up, `xi_confirmed` flag set; dashboard shows a
+"今日首发已确认" chip). Key-guarded (`APIFOOTBALL_KEY`): a no-op — zero network calls, predictions
+byte-identical — until the key is set. Scoped deliberately to the **scorer layer**: a one-match
+benching must NOT alter the 1X2 result (would need per-player strength) or the tournament Golden
+Boot (he's out for one game, not the tournament). Timing caveat: the daily review fires at fixed
+times, so evening-match XIs (published after the morning run) need a near-kickoff trigger to catch
+in full — noted for a follow-up.

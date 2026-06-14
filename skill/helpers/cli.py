@@ -104,20 +104,28 @@ def _cmd_predict(args):
     if match_markets:
         print(f"[market] {len(match_markets)} live per-match markets found")
 
+    # match-day confirmed XI (API-Football free tier): for TODAY's fixtures, players
+    # benched/out drop from that match's scorer prediction. Empty until lineups publish
+    # ~20-40 min before kickoff and until APIFOOTBALL_KEY is set — a no-op otherwise.
+    absences = _todays_lineup_absences(squads)
+    if absences:
+        print(f"[lineups] confirmed XI applied for {len(absences)} side(s) today")
+
     if args.match:
         row = fixtures[fixtures["fixture_id"] == args.match]
         if row.empty:
             print(f"fixture {args.match} not found", file=sys.stderr)
             sys.exit(1)
         row = row.iloc[0]
-        out = _predict_one(model, row, squads, ctx.get(row["fixture_id"]), match_markets)
+        out = _predict_one(model, row, squads, ctx.get(row["fixture_id"]), match_markets, absences)
         print(json.dumps(out, indent=2, ensure_ascii=False))
         return
 
     preds = []
     for _, row in fixtures.iterrows():
         try:
-            preds.append(_predict_one(model, row, squads, ctx.get(row["fixture_id"]), match_markets))
+            preds.append(_predict_one(model, row, squads, ctx.get(row["fixture_id"]),
+                                      match_markets, absences))
         except Exception as e:  # noqa: BLE001 — keep going on sparse teams
             preds.append({"fixture_id": row["fixture_id"], "error": str(e)})
     # stamp the generation time (UTC) — live scoring only accepts forecasts proven to
@@ -228,7 +236,30 @@ def _detail_payload(model, results, fixtures, squads, sim, talent=None, fc_team=
     return tf, sq
 
 
-def _predict_one(model, row, squads=None, ctx=None, match_markets=None) -> dict:
+def _todays_lineup_absences(squads: dict | None) -> dict:
+    """{team: {absent squad-member names}} from today's confirmed XIs (API-Football).
+    Restricted to the current match day to respect the free quota; {} without a key,
+    pre-publish, or on any error — the prediction path then runs exactly as before."""
+    if not squads:
+        return {}
+    try:
+        today = pd.Timestamp.now().strftime("%Y-%m-%d")
+        lus = data_loader.fetch_apifootball_lineups(today)
+        out = {}
+        for (h, a), xi in lus.items():
+            for team, names in ((h, xi.get("home")), (a, xi.get("away"))):
+                sq = squads.get(team)
+                if sq and names:
+                    ab = data_loader.lineup_absences(sq, names)
+                    if ab:
+                        out[team] = ab
+        return out
+    except Exception as e:  # noqa: BLE001 — match-day enhancement, never fatal
+        print(f"[lineups skipped] {e}", file=sys.stderr)
+        return {}
+
+
+def _predict_one(model, row, squads=None, ctx=None, match_markets=None, absences=None) -> dict:
     import numpy as np
 
     from ..model import dixon_coles as dc
@@ -269,9 +300,12 @@ def _predict_one(model, row, squads=None, ctx=None, match_markets=None) -> dict:
         mp["edge"] = [round(float(x), 4) for x in (p_final - p_mkt)]
     if squads:
         lam_h, lam_a = model.lambdas(home, away, neutral)
-        mp["scorers_home"] = match_scorers(lam_h * hm, squads.get(home, []), topn=3)
-        mp["scorers_away"] = match_scorers(lam_a * am, squads.get(away, []), topn=3)
-    # NOTE: market blend + context adjustments wired once live odds feed exists (M3/M5).
+        abs_h = (absences or {}).get(home)
+        abs_a = (absences or {}).get(away)
+        mp["scorers_home"] = match_scorers(lam_h * hm, squads.get(home, []), topn=3, absent=abs_h)
+        mp["scorers_away"] = match_scorers(lam_a * am, squads.get(away, []), topn=3, absent=abs_a)
+        if abs_h or abs_a:
+            mp["xi_confirmed"] = True   # dashboard can flag "scorers reflect today's lineup"
     return mp
 
 
