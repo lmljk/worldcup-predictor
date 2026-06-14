@@ -610,3 +610,12 @@ benching must NOT alter the 1X2 result (would need per-player strength) or the t
 Boot (he's out for one game, not the tournament). Timing caveat: the daily review fires at fixed
 times, so evening-match XIs (published after the morning run) need a near-kickoff trigger to catch
 in full — noted for a follow-up.
+
+**Run 25 addendum — live-activated (key in, two fixes):** API-Football free key authenticates,
+but the free plan BLOCKS the `season` param for 2026 ("try 2022-2024") while granting a rolling
+~3-day `date` window — querying **date-only** and filtering to the World Cup client-side bypasses
+the paywall (today's 5 WC fixtures returned; names clean, "Türkiye"→"Turkey", squad XI matching
+11/11). Second fix: absences are now keyed by the **specific matchup** (both orientations), not by
+team — keying by team wrongly flagged a side's *other* fixtures (xi_confirmed fired on 10 matches
+instead of the 2 with a real XI). Verified live: confirmed XI applies to exactly today's published
+matchups, share redistributed, dashboard chip shown.

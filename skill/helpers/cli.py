@@ -237,9 +237,10 @@ def _detail_payload(model, results, fixtures, squads, sim, talent=None, fc_team=
 
 
 def _todays_lineup_absences(squads: dict | None) -> dict:
-    """{team: {absent squad-member names}} from today's confirmed XIs (API-Football).
-    Restricted to the current match day to respect the free quota; {} without a key,
-    pre-publish, or on any error — the prediction path then runs exactly as before."""
+    """{(home, away): {team: {absent names}}} from today's confirmed XIs (API-Football),
+    keyed by the SPECIFIC matchup (both orientations) — a confirmed XI applies only to
+    THAT match, never to a team's other fixtures. {} without a key, pre-publish, or on
+    any error — the prediction path then runs exactly as before."""
     if not squads:
         return {}
     try:
@@ -247,12 +248,15 @@ def _todays_lineup_absences(squads: dict | None) -> dict:
         lus = data_loader.fetch_apifootball_lineups(today)
         out = {}
         for (h, a), xi in lus.items():
+            pair = {}
             for team, names in ((h, xi.get("home")), (a, xi.get("away"))):
                 sq = squads.get(team)
                 if sq and names:
                     ab = data_loader.lineup_absences(sq, names)
                     if ab:
-                        out[team] = ab
+                        pair[team] = ab
+            if pair:
+                out[(h, a)] = out[(a, h)] = pair
         return out
     except Exception as e:  # noqa: BLE001 — match-day enhancement, never fatal
         print(f"[lineups skipped] {e}", file=sys.stderr)
@@ -300,8 +304,9 @@ def _predict_one(model, row, squads=None, ctx=None, match_markets=None, absences
         mp["edge"] = [round(float(x), 4) for x in (p_final - p_mkt)]
     if squads:
         lam_h, lam_a = model.lambdas(home, away, neutral)
-        abs_h = (absences or {}).get(home)
-        abs_a = (absences or {}).get(away)
+        # apply only THIS matchup's confirmed XI (not the teams' other fixtures)
+        pair_abs = (absences or {}).get((home, away)) or {}
+        abs_h, abs_a = pair_abs.get(home), pair_abs.get(away)
         mp["scorers_home"] = match_scorers(lam_h * hm, squads.get(home, []), topn=3, absent=abs_h)
         mp["scorers_away"] = match_scorers(lam_a * am, squads.get(away, []), topn=3, absent=abs_a)
         if abs_h or abs_a:

@@ -498,12 +498,16 @@ def fetch_apifootball_lineups(date_iso: str) -> dict[tuple, dict]:
         return {}
     out: dict[tuple, dict] = {}
     try:
+        # date-only query: the free plan grants a rolling ~3-day date window but BLOCKS
+        # the `season` param for 2026, so we must NOT send season — fetch the day's whole
+        # card and filter to the World Cup (league id / name) client-side.
         r = requests.get(f"{APIFOOTBALL_BASE}/fixtures",
-                         params={"league": WC_APIF_LEAGUE, "season": WC_APIF_SEASON,
-                                 "date": date_iso},
-                         headers=_apif_headers(), timeout=30)
+                         params={"date": date_iso}, headers=_apif_headers(), timeout=30)
         r.raise_for_status()
         for fx in r.json().get("response", []):
+            lg = fx.get("league") or {}
+            if lg.get("id") != WC_APIF_LEAGUE and "world cup" not in str(lg.get("name", "")).lower():
+                continue
             fid = (fx.get("fixture") or {}).get("id")
             tt = fx.get("teams") or {}
             h = canon((tt.get("home") or {}).get("name"))
