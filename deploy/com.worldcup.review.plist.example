@@ -15,10 +15,21 @@
   <key>WorkingDirectory</key><string>/Users/bot/worldcup</string>
   <key>EnvironmentVariables</key>
   <dict><key>PYTHONPATH</key><string>/Users/bot/worldcup</string></dict>
+  <!-- Times are LOCAL. Set them ~30 min before your match-day kickoff clusters so the
+       review picks up confirmed starting XIs (lineups publish ~40 min pre-kickoff) and
+       the latest scores. Example below blankets a Beijing-time tournament where WC2026
+       kickoffs land 00:00-10:00 local; adjust to your timezone. Finished matches are
+       skipped, so the API-Football free quota (100/day) holds even with frequent runs. -->
   <key>StartCalendarInterval</key>
   <array>
+    <dict><key>Hour</key><integer>0</integer><key>Minute</key><integer>30</integer></dict>
+    <dict><key>Hour</key><integer>2</integer><key>Minute</key><integer>30</integer></dict>
+    <dict><key>Hour</key><integer>4</integer><key>Minute</key><integer>30</integer></dict>
+    <dict><key>Hour</key><integer>6</integer><key>Minute</key><integer>30</integer></dict>
+    <dict><key>Hour</key><integer>8</integer><key>Minute</key><integer>30</integer></dict>
     <dict><key>Hour</key><integer>9</integer><key>Minute</key><integer>0</integer></dict>
-    <dict><key>Hour</key><integer>16</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Hour</key><integer>13</integer><key>Minute</key><integer>30</integer></dict>
+    <dict><key>Hour</key><integer>23</integer><key>Minute</key><integer>0</integer></dict>
   </array>
   <key>StandardOutPath</key><string>/tmp/worldcup.review.log</string>
   <key>StandardErrorPath</key><string>/tmp/worldcup.review.err</string>

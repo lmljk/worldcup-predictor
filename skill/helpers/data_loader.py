@@ -504,11 +504,17 @@ def fetch_apifootball_lineups(date_iso: str) -> dict[tuple, dict]:
         r = requests.get(f"{APIFOOTBALL_BASE}/fixtures",
                          params={"date": date_iso}, headers=_apif_headers(), timeout=30)
         r.raise_for_status()
+        FINISHED = {"FT", "AET", "PEN", "PST", "CANC", "ABD", "AWD", "WO"}
         for fx in r.json().get("response", []):
             lg = fx.get("league") or {}
             if lg.get("id") != WC_APIF_LEAGUE and "world cup" not in str(lg.get("name", "")).lower():
                 continue
-            fid = (fx.get("fixture") or {}).get("id")
+            fxi = fx.get("fixture") or {}
+            # only spend a lineups call on matches not already over (saves the 100/day quota
+            # and avoids applying a confirmed XI to a finished game the seeder already handles)
+            if (fxi.get("status") or {}).get("short") in FINISHED:
+                continue
+            fid = fxi.get("id")
             tt = fx.get("teams") or {}
             h = canon((tt.get("home") or {}).get("name"))
             a = canon((tt.get("away") or {}).get("name"))
