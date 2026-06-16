@@ -470,6 +470,50 @@ def _drift_gate(rps_values: list[float]) -> dict:
     return out
 
 
+# ---- MARKET_WEIGHT re-calibration protocol (PRE-DECLARED 2026-06-16, before the n was
+# reached — locked so the decision can't be rationalised post-hoc; see FINDINGS Run 26) ----
+WEVAL_MIN_N = 30          # no recommendation below this many market-carrying matches
+WEVAL_MARGIN = 0.003      # forward-optimal w must beat the current w's RPS by at least this
+
+
+def _market_weight_protocol(wl_rows: list[dict]) -> dict:
+    """Forward, look-ahead-free check on whether MARKET_WEIGHT should be revisited.
+
+    `wl_rows` = per-match {market:[h,d,a], model:[h,d,a], outcome:int} for every scored
+    match that carried a live per-match market. Grid-searches the blend weight w on this
+    FORWARD evidence (not the backtest), and emits a recommendation ONLY when both
+    pre-declared conditions hold: n >= WEVAL_MIN_N, and the forward-optimal w beats the
+    current MARKET_WEIGHT by >= WEVAL_MARGIN on mean RPS. It NEVER changes the weight —
+    output is a prompt for a human review that must still pass the backtest (w must not
+    make the historical walk-forward worse). Below n it just reports 'accruing'."""
+    from ..backtest import metrics
+    out = {"n": len(wl_rows), "min_n": WEVAL_MIN_N, "current_w": MARKET_WEIGHT}
+    if len(wl_rows) < WEVAL_MIN_N:
+        out["status"] = "accruing"   # pre-declared sample gate
+        return out
+    mk = np.array([r["market"] for r in wl_rows], dtype=float)
+    md = np.array([r["model"] for r in wl_rows], dtype=float)
+    ys = [r["outcome"] for r in wl_rows]
+
+    def mean_rps(w):
+        b = w * mk + (1 - w) * md
+        b = b / b.sum(axis=1, keepdims=True)
+        return float(np.mean([metrics.rps(b[i], ys[i]) for i in range(len(ys))]))
+
+    grid = {round(w, 2): mean_rps(w) for w in np.linspace(0, 1, 21)}
+    w_opt = min(grid, key=grid.get)
+    cur = mean_rps(MARKET_WEIGHT)
+    gain = cur - grid[w_opt]
+    out.update(rps_current=round(cur, 4), w_forward_optimal=w_opt,
+               rps_forward_optimal=round(grid[w_opt], 4), gain=round(gain, 4),
+               status=("REVIEW" if gain >= WEVAL_MARGIN else "ok"),
+               note=("forward evidence favours w=%.2f (RPS %+.4f vs current) — HUMAN REVIEW: "
+                     "re-fit only if it also does NOT worsen the walk-forward backtest"
+                     % (w_opt, -gain)) if gain >= WEVAL_MARGIN else
+                    "current MARKET_WEIGHT still within %.3f of forward-optimal" % WEVAL_MARGIN)
+    return out
+
+
 def _cmd_review(args):
     """Daily live loop: refresh data, score completed matches vs our prior predictions,
     re-predict upcoming fixtures, re-simulate, and republish the dashboard."""
@@ -488,7 +532,7 @@ def _cmd_review(args):
     # no-hindsight guard) as the dashboard scoreboard, so the two never disagree.
     pred_index = _prekickoff_predictions()
 
-    scored = []
+    scored, wl_rows = [], []
     for r in played.itertuples():
         key = (str(r.date.date()), r.home_team, r.away_team)
         p = pred_index.get(key)
@@ -503,11 +547,12 @@ def _cmd_review(args):
             "hit": bool(int(np.argmax(probs)) == outcome),
         }
         # forward MARKET_WEIGHT ledger: where the forecast carried a live per-match
-        # market, score market-only and model-only too. Accumulates the evidence a
-        # future (post-tournament, pre-declared n) re-fit of w would need.
+        # market, score market-only and model-only too, and keep the raw prob vectors so
+        # the pre-declared protocol can grid-search the forward-optimal blend weight.
         if p.get("market_1x2") and p.get("model_1x2"):
             row["rps_market"] = round(metrics.rps(np.array(p["market_1x2"]), outcome), 4)
             row["rps_model"] = round(metrics.rps(np.array(p["model_1x2"]), outcome), 4)
+            wl_rows.append({"market": p["market_1x2"], "model": p["model_1x2"], "outcome": outcome})
         scored.append(row)
 
     live = {"matches_scored": len(scored)}
@@ -521,6 +566,11 @@ def _cmd_review(args):
                               "mean_rps_blend": round(float(np.mean([s["rps"] for s in ledg])), 4),
                               "mean_rps_market": round(float(np.mean([s["rps_market"] for s in ledg])), 4),
                               "mean_rps_model": round(float(np.mean([s["rps_model"] for s in ledg])), 4)}
+        # pre-declared MARKET_WEIGHT re-calibration check (prompt only, never auto-changes w)
+        live["w_protocol"] = _market_weight_protocol(wl_rows)
+        if live["w_protocol"].get("status") == "REVIEW":
+            print(f"\n*** MARKET_WEIGHT REVIEW TRIGGERED: {live['w_protocol']['note']} ***\n",
+                  file=sys.stderr)
     review = {"reviewed_at": pd.Timestamp.now().isoformat(timespec="minutes"),
               "live_calibration": live, "detail": scored}
     (paths.report_dir() / "review.json").write_text(json.dumps(review, indent=2, ensure_ascii=False))

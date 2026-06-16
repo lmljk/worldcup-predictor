@@ -619,3 +619,28 @@ the paywall (today's 5 WC fixtures returned; names clean, "Türkiye"→"Turkey",
 team — keying by team wrongly flagged a side's *other* fixtures (xi_confirmed fired on 10 matches
 instead of the 2 with a real XI). Verified live: confirmed XI applies to exactly today's published
 matchups, share redistributed, dashboard chip shown.
+
+## Run 26 — MARKET_WEIGHT re-calibration protocol: PRE-DECLARED (locked 2026-06-16)
+
+The forward ledger (Run from commit 01db08d) is leaning market-sharper in-tournament — at n=14
+per-match-market games: market RPS 0.214 < blend 0.219 < model 0.232. That HINTS MARKET_WEIGHT
+(currently 0.60) may be too low. To act on this without curve-fitting, the decision rule is
+declared NOW, before the sample is large enough to judge — so it can't be rationalised post-hoc.
+
+**Protocol (`_market_weight_protocol`, runs every review, PROMPT-ONLY — never auto-changes w):**
+- Accrue per-match (market[h,d,a], model[h,d,a], outcome) for every scored match carrying a live
+  per-match market. Look-ahead-free: each forecast is the proven pre-kickoff one.
+- **Sample gate:** no recommendation below **n ≥ 30** (`WEVAL_MIN_N`) — status "accruing".
+- At n ≥ 30: grid-search the blend weight w∈[0,1] on this FORWARD evidence; if the forward-optimal
+  w beats the current 0.60 by **≥ 0.003 mean RPS** (`WEVAL_MARGIN`), emit status "REVIEW" with the
+  suggested w; else "ok".
+- **A "REVIEW" is a human prompt, not a change.** Acting on it requires a second gate: the new w
+  must ALSO not worsen the historical walk-forward backtest (doctrine: changes must beat — or at
+  least not break — the backtest). Only if both the forward ledger and the backtest agree does w move.
+
+Rationale: this is the one place live data is actually arguing for a change, and it's the highest-
+value lever (market anchoring dominates). Everything else (the 8 rejected factors, the core DC
+model) stays frozen — drift gate is "ok" at n=16 (p=0.27), no evidence to touch it. The disciplined
+"optimisation" at this stage is *instrumented patience*: accumulate forward evidence, act only when
+two independent gates (forward ledger + backtest) agree. Verified: protocol returns accruing (<30),
+REVIEW only when forward-optimal beats current by the margin, ok when market≈model.
